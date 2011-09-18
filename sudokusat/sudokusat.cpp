@@ -1,0 +1,459 @@
+#include <cstdlib>
+#include <stdint.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <vector>
+#include <time.h>
+#include <cstring>
+#include <sys/time.h>
+
+using namespace std;
+
+typedef struct
+{
+    uint8_t r;
+    uint8_t c;
+} SPos;
+
+typedef struct
+{
+	uint8_t     m_val[9][9];
+	uint8_t     m_conf[9][9];
+	uint8_t     m_cc[9][9];
+	uint16_t    m_totalConf;
+	uint8_t     m_constraintMap[9][9][9];
+} SWorkingSet;
+
+class CTimer
+{
+public:
+    CTimer()
+    {
+        timeval tv;
+        gettimeofday(&tv, NULL);
+        m_startMsecs = tv.tv_sec*1000 + tv.tv_usec/1000;
+    }
+    
+    ~CTimer()
+    {
+        timeval tv;
+        gettimeofday(&tv, NULL);
+        unsigned int elapsed = tv.tv_sec*1000 + tv.tv_usec/1000 - m_startMsecs;
+        printf("Time taken: %d ms\n", elapsed);
+    }
+private:
+    unsigned int m_startMsecs;
+};
+
+namespace
+{
+	SWorkingSet active;
+	SWorkingSet candidate;
+	SWorkingSet master;
+	SWorkingSet blank;
+	
+	const uint8_t kMaxConf = 21;
+	const uint8_t kInfiniteConf = kMaxConf+1;
+	const uint8_t kSubsquareMin[9] = {0, 0, 0, 3, 3, 3, 6 ,6, 6}; //hardcode > division!
+};
+
+#define PRINT_OK(x) printf("%d ", x)
+#define PRINT_BAD(x) printf("\033[0;31m%d \033[0m", x)
+#define PRINT_CONST(x) printf("\033[0;32m%d \033[0m", x)
+
+#define val                 active.m_val
+#define conf                active.m_conf
+#define cc                  active.m_cc
+#define totalConf           active.m_totalConf
+#define constraintMap       active.m_constraintMap
+
+//active --> master
+void Commit()
+{
+    memcpy(&master, &candidate, sizeof(SWorkingSet));
+}
+
+//active --> candidate
+void Save()
+{
+    memcpy(&candidate, &active, sizeof(SWorkingSet));
+}
+
+//candidate --> active
+void Restore()
+{
+    memcpy(&active, &candidate, sizeof(SWorkingSet));
+}
+
+//master --> active
+void Checkout()
+{
+    memcpy(&active, &master, sizeof(SWorkingSet));
+}
+
+void PrintSolution()
+{        
+    for (uint8_t i=0; i<9; ++i)
+    {
+        for (uint8_t j=0; j<9; ++j)
+        {
+            if (conf[i][j] == kInfiniteConf) PRINT_CONST(val[i][j]);
+            else if (conf[i][j] >= kMaxConf) PRINT_OK(val[i][j]);
+            else PRINT_BAD(val[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+void PrintConfidence()
+{
+    printf("\n");
+    for (uint8_t r=0; r<9; ++r)
+    {
+        for (uint8_t c=0; c<9; ++c)
+        {
+            printf("%02d|\033[0;34m%02d\033[0m ", conf[r][c], cc[r][c]);
+        }
+        printf("\n");
+    }
+}
+
+uint8_t PickNum(uint8_t r, uint8_t c)
+{
+    bool num[9] = {false};
+    uint8_t maxConf[9] = {0};
+    
+    //Row
+    for (uint8_t c2=0; c2<9; ++c2)
+    {
+        if (c2 == c) continue;
+        if (val[r][c2])
+        {
+            uint8_t n = val[r][c2] - 1;
+            num[n] = true;
+            maxConf[n] = maxConf[n] > conf[r][c2] ? maxConf[n] : conf[r][c2];
+        }
+    }
+    
+    //Col
+    for (uint8_t r2=0; r2<9; ++r2)
+    {
+        if (r2 == r) continue;
+        if (val[r2][c])
+        {
+            uint8_t n = val[r2][c] - 1;
+            num[n] = true;
+            maxConf[n] = maxConf[n] > conf[r2][c]? maxConf[n] : conf[r2][c];
+        }
+    }
+    
+    //Subsquare
+    uint8_t min_r=kSubsquareMin[r], min_c=kSubsquareMin[c], max_r=min_r+2, max_c=min_c+2;
+    for (uint8_t r2=min_r; r2<=max_r; ++r2)
+    {
+        for (uint8_t c2=min_c; c2<=max_c; ++c2)
+        {
+            if (r2 == r && c2 == c) continue;
+            
+            if (val[r2][c2])
+            {
+                uint8_t n = val[r2][c2] - 1;
+                num[n] = true;
+                maxConf[n] = maxConf[n] > conf[r2][c2] ? maxConf[n] : conf[r2][c2];
+            }
+        }
+    }
+    
+    vector<uint8_t> candidates;
+    for (uint8_t i=0; i<9; ++i)
+        if (!num[i]) candidates.push_back(i);
+    
+    int cancnt = candidates.size();
+    if (cancnt == 1)
+        return candidates[0] + 1;
+    else if (cancnt > 1)
+        return candidates[rand() % cancnt] + 1;
+    else
+    {
+        vector<uint8_t> candidates2;
+        uint8_t minConf = kInfiniteConf;
+        for (uint8_t i =0; i<9; ++i)
+        {
+            if (maxConf[i] < minConf)
+                candidates2.clear();
+            if (maxConf[i] <= minConf)
+                candidates2.push_back(i);
+        }
+        return candidates2[rand() % candidates2.size()];
+    }
+}
+
+bool PickPosition(uint8_t& out_r, uint8_t& out_c)
+{
+    uint8_t minConf = kInfiniteConf;
+    std::vector<SPos> candidates1;
+    
+    for (uint8_t r=0; r<9; ++r)
+    {
+        for (uint8_t c=0; c<9; ++c)
+        {
+            SPos p = {r, c};
+            if (conf[r][c] < minConf)
+                candidates1.clear();
+            if (conf[r][c] <= minConf)
+            {
+                candidates1.push_back(p);
+                minConf = conf[r][c];
+            }
+        }
+    }
+   
+    if (minConf >= kMaxConf)
+        return false;
+    
+    if (candidates1.size() == 1)
+    {
+        out_r = candidates1[0].r;
+        out_c = candidates1[0].c;
+        return true;
+    }
+    
+    std::vector<SPos> candidates2;
+    uint8_t maxCC = 0;
+    
+    for (std::vector<SPos>::iterator it=candidates1.begin(); it != candidates1.end(); ++it)
+    {
+        if (cc[it->r][it->c] > maxCC)
+            candidates2.clear();
+        if (cc[it->r][it->c] >= maxCC)
+        {
+            candidates2.push_back(*it);
+            maxCC = cc[it->r][it->c];
+        }
+    }
+    
+    uint8_t count2 = candidates2.size();
+    if (count2 == 1)
+    {
+        out_r = candidates2[0].r;
+        out_c = candidates2[0].c;
+        return true;
+    }
+    
+    uint8_t lucky = rand() % count2;
+    out_r = candidates2[lucky].r;
+    out_c = candidates2[lucky].c;
+    return true;
+}
+
+#define DEC_CONF(r, c) --conf[r][c]; --totalConf;
+#define INC_CONF(r, c) ++conf[r][c]; ++totalConf;
+#define SET_CONF(r, c, n) totalConf -= conf[r][c]; conf[r][c] = n; totalConf += n;
+#define SET_CONF_INFINITE(r, c) totalConf -= conf[r][c]; conf[r][c] = kInfiniteConf; totalConf += kMaxConf;
+
+inline void UpdateCellConf(size_t r, size_t c, uint8_t newVal, size_t r2, size_t c2)
+{
+    if (!val[r2][c2])
+        return;
+        
+    if (val[r][c] && val[r][c] != val[r2][c2])
+    {
+        if (conf[r2][c2] != kInfiniteConf)
+        {
+            DEC_CONF(r2, c2);
+        }
+    }
+        
+    if (newVal && newVal != val[r2][c2])
+    {
+        if (conf[r2][c2] != kInfiniteConf)
+        {
+            INC_CONF(r2, c2);
+        }
+        INC_CONF(r, c);
+    }
+}
+
+inline void UpdateCellConstraintMap(size_t r, size_t c, uint8_t newVal, size_t r2, size_t c2)
+{
+    if (val[r][c])
+    {
+        --constraintMap[r2][c2][(val[r][c]-1)];
+        if (!constraintMap[r2][c2][(val[r][c]-1)])
+            --cc[r2][c2];
+    }
+    
+    if (newVal)
+    {
+        if (!constraintMap[r2][c2][newVal-1])
+            ++cc[r2][c2];
+        ++constraintMap[r2][c2][newVal-1];
+    }
+}
+
+inline void VisitCell(uint8_t r, uint8_t c, uint8_t newVal, uint8_t r2, uint8_t c2)
+{
+    if (r2 == r && c2 == c)
+        return;
+    
+    UpdateCellConstraintMap(r, c, newVal, r2, c2);
+    UpdateCellConf(r, c, newVal, r2, c2);
+}
+
+void MakeAssignment(uint8_t r, uint8_t c, uint8_t newVal, bool fixed=false)
+{
+    if (val[r][c] == newVal) return;
+    
+    SET_CONF(r, c, newVal?1:0);
+    
+    //Row
+    for (uint8_t c2=0; c2<9; ++c2)
+    {
+        VisitCell(r, c, newVal, r, c2);
+    }
+    
+    //Col
+    for (uint8_t r2=0; r2<9; ++r2)
+    {
+        VisitCell(r, c, newVal, r2, c);
+    }
+    
+    //Subsquare
+    uint8_t min_r=kSubsquareMin[r], min_c=kSubsquareMin[c], max_r=min_r+2, max_c=min_c+2;
+    for (uint8_t r2=min_r; r2<=max_r; ++r2)
+    {
+        for (uint8_t c2=min_c; c2<=max_c; ++c2)
+        {
+            if (r != r2 && c != c2) //Important: do not visit a cell twice
+            {
+                VisitCell(r, c, newVal, r2, c2);
+            }
+        }
+    }
+    
+    val[r][c] = newVal;
+    
+    if (fixed)
+    {
+        SET_CONF_INFINITE(r, c);
+    }
+}
+
+int Search()
+{
+    uint8_t next_r = 0, next_c=0;
+    int stuckCount = 0;
+    
+    while (true)
+    {
+        Restore();
+        
+        if (PickPosition(next_r, next_c))
+            MakeAssignment(next_r, next_c, PickNum(next_r, next_c));
+        else
+            return 1;
+            
+        if (totalConf > candidate.m_totalConf)
+        {
+            Save();
+            stuckCount = 0;
+        }
+        else
+        {
+            stuckCount++;
+        }
+        
+        if (totalConf > master.m_totalConf)
+        {
+            Commit();
+        }
+        
+        if (stuckCount == 20)
+        {
+            memcpy(&candidate, &blank, sizeof(SWorkingSet));
+        }
+    }
+    
+    return 0;
+}
+
+bool ReadFile(char* szFileName)
+{
+    FILE* pFile = fopen(szFileName, "r");
+    if (!pFile)
+    {
+        printf("File not found: %s\n", szFileName);
+        return false;
+    }
+    
+    for (uint8_t i=0; i<9; ++i)
+	{
+	    for (uint8_t j=0; j<9; ++j)
+	    {
+	        char buf[2] = {0};
+	        int ret = fscanf(pFile, "%s", buf);
+	        if (ret==EOF || ret==0)
+	        {
+	            printf("Invalid file format: %s\n", szFileName);
+	            return false;
+	        }
+	        if (buf[0] != '_')
+	        {
+	            MakeAssignment(i, j, (uint8_t) (atoi(buf)), true);
+	        }
+	    }
+	}
+	return true;
+}
+
+int main(int argc, char** argv)
+{
+    if (argc<2)
+    {
+        printf("SUDOKU SAT SOLVER\n");
+        printf("Usage: sudokusat <input-file> [options]\n");
+        printf("Options:\n");
+        printf("-s <seed>\t: use the specified seed\n"); 
+        return -1;
+    }
+    
+    if (!ReadFile(argv[1]))
+        return -1;
+        
+    int nRet = 0;
+    
+    Save();
+    Commit();
+    memcpy(&blank, &active, sizeof(SWorkingSet));
+    
+    unsigned int seed=time(NULL);
+    for (uint8_t i=2; i+1<argc; i+=2)
+    {
+        if (strcmp(argv[i], "-s") == 0)
+        {
+            seed = atoi(argv[i+1]);
+        }
+    }
+    printf("Seed=%d\n", seed);
+    srand(seed);
+    
+    { //start timer
+    CTimer t;
+    nRet = Search();
+    } //end timer
+    
+    if (nRet) //Found a solution
+    {
+        printf("Satisfiable: yes\n");
+    }
+    else //No solution
+    {
+        printf("Satisfiable: unknown\n");
+        printf("Best available solution:\n");
+        Checkout();
+    }
+    
+    PrintSolution();
+    
+    return nRet;
+}
