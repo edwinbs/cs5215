@@ -6,6 +6,7 @@
 #include <time.h>
 #include <cstring>
 #include <sys/time.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -24,10 +25,38 @@ typedef struct
 	uint8_t     m_constraintMap[9][9][9];
 } SWorkingSet;
 
+class CAccumulator
+{
+public:
+    ~CAccumulator()
+    {
+        unsigned int total=0;
+        for (vector<unsigned int>::iterator it=records.begin(); it!=records.end(); ++it)
+        {
+            total += *it;
+        }
+        sort(records.begin(), records.end());
+        
+        printf("Total time   : %d ms\n", total);
+        printf("Average time : %d ms\n", total/records.size());
+        printf("Median time  : %d ms\n", records[records.size() / 2]); 
+    }
+
+    void AddRecord(unsigned int time)
+    {
+        records.push_back(time);
+    }
+    
+private:
+    vector<unsigned int> records;
+};
+
 class CTimer
 {
 public:
-    CTimer()
+    CTimer(CAccumulator& accumulator)
+    : m_startMsecs(0)
+    , m_accumulator(accumulator)
     {
         timeval tv;
         gettimeofday(&tv, NULL);
@@ -39,10 +68,11 @@ public:
         timeval tv;
         gettimeofday(&tv, NULL);
         unsigned int elapsed = tv.tv_sec*1000 + tv.tv_usec/1000 - m_startMsecs;
-        printf("Time taken: %d ms\n", elapsed);
+        m_accumulator.AddRecord(elapsed);
     }
 private:
-    unsigned int m_startMsecs;
+    unsigned int    m_startMsecs;
+    CAccumulator&   m_accumulator;
 };
 
 namespace
@@ -120,7 +150,6 @@ void PrintConfidence()
 
 uint8_t PickNum(uint8_t r, uint8_t c)
 {
-    bool num[9] = {false};
     uint8_t maxConf[9] = {0};
     
     //Row
@@ -130,7 +159,6 @@ uint8_t PickNum(uint8_t r, uint8_t c)
         if (val[r][c2])
         {
             uint8_t n = val[r][c2] - 1;
-            num[n] = true;
             maxConf[n] = maxConf[n] > conf[r][c2] ? maxConf[n] : conf[r][c2];
         }
     }
@@ -142,7 +170,6 @@ uint8_t PickNum(uint8_t r, uint8_t c)
         if (val[r2][c])
         {
             uint8_t n = val[r2][c] - 1;
-            num[n] = true;
             maxConf[n] = maxConf[n] > conf[r2][c]? maxConf[n] : conf[r2][c];
         }
     }
@@ -158,34 +185,24 @@ uint8_t PickNum(uint8_t r, uint8_t c)
             if (val[r2][c2])
             {
                 uint8_t n = val[r2][c2] - 1;
-                num[n] = true;
                 maxConf[n] = maxConf[n] > conf[r2][c2] ? maxConf[n] : conf[r2][c2];
             }
         }
     }
     
-    vector<uint8_t> candidates;
-    for (uint8_t i=0; i<9; ++i)
-        if (!num[i]) candidates.push_back(i);
-    
-    int cancnt = candidates.size();
-    if (cancnt == 1)
-        return candidates[0] + 1;
-    else if (cancnt > 1)
-        return candidates[rand() % cancnt] + 1;
-    else
+    vector<uint8_t> candidates2;
+    uint8_t minConf = kInfiniteConf;
+    for (uint8_t i =0; i<9; ++i)
     {
-        vector<uint8_t> candidates2;
-        uint8_t minConf = kInfiniteConf;
-        for (uint8_t i =0; i<9; ++i)
+        if (maxConf[i] < minConf)
         {
-            if (maxConf[i] < minConf)
-                candidates2.clear();
-            if (maxConf[i] <= minConf)
-                candidates2.push_back(i);
+            candidates2.clear();
+            minConf = maxConf[i];
         }
-        return candidates2[rand() % candidates2.size()];
+        if (maxConf[i] <= minConf)
+            candidates2.push_back(i);
     }
+    return candidates2[rand() % candidates2.size()] + 1;
 }
 
 bool PickPosition(uint8_t& out_r, uint8_t& out_c)
@@ -413,7 +430,9 @@ int main(int argc, char** argv)
         printf("SUDOKU SAT SOLVER\n");
         printf("Usage: sudokusat <input-file> [options]\n");
         printf("Options:\n");
-        printf("-s <seed>\t: use the specified seed\n"); 
+        printf("-s <seed>  : use the specified seed\n");
+        printf("-i <num>   : run a number of iterations with incrementing seeds\n");
+        printf("             if -s is specified, it will be the first seed\n");
         return -1;
     }
     
@@ -426,21 +445,43 @@ int main(int argc, char** argv)
     Commit();
     memcpy(&blank, &active, sizeof(SWorkingSet));
     
-    unsigned int seed=time(NULL);
+    unsigned int seed=time(NULL) % 1000; //shorter, easier to reproduce
+    unsigned int iters=1;
+    
     for (uint8_t i=2; i+1<argc; i+=2)
     {
         if (strcmp(argv[i], "-s") == 0)
         {
             seed = atoi(argv[i+1]);
         }
+        
+        if (strcmp(argv[i], "-i") == 0)
+        {
+            iters = atoi(argv[i+1]);
+        }
     }
-    printf("Seed=%d\n", seed);
-    srand(seed);
     
-    { //start timer
-    CTimer t;
-    nRet = Search();
-    } //end timer
+    if (iters == 1)
+    {
+        printf("Seed=%d\n", seed);
+    }
+    else
+    {
+        printf("Seeds=%d to %d\n", seed, seed+iters-1);
+    }
+    
+    CAccumulator accumulator;
+    for (unsigned int i=0; i<iters; ++i)
+    { 
+        srand(seed+i);
+        memcpy(&active, &blank, sizeof(SWorkingSet));
+        memcpy(&candidate, &blank, sizeof(SWorkingSet));
+        memcpy(&master, &blank, sizeof(SWorkingSet));
+        
+        CTimer t(accumulator); //start timer
+        nRet = Search();
+        //end timer
+    }
     
     if (nRet) //Found a solution
     {
