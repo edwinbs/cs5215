@@ -11,7 +11,8 @@
     #include <sys/time.h>
 #elif defined _WIN32
     #include <windows.h>
-    typedef unsigned char uint8_t;
+    typedef unsigned char	uint8_t;
+	typedef unsigned short	uint16_t;
 #else
     #error Unknown platform, cannot compile
 #endif
@@ -271,7 +272,7 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
         }
     }
     
-    uint8_t count2 = candidates2.size();
+    uint8_t count2 = (uint8_t) candidates2.size();
     if (count2 == 1)
     {
         out_r = candidates2[0].r;
