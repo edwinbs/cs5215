@@ -1,12 +1,20 @@
 #include <cstdlib>
-#include <stdint.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <vector>
 #include <time.h>
 #include <cstring>
-#include <sys/time.h>
 #include <algorithm>
+
+#ifdef __unix__
+    #include <stdint.h>
+    #include <sys/time.h>
+#elif defined _WIN32
+    #include <windows.h>
+    typedef unsigned char uint8_t;
+#else
+    #error Unknown platform, cannot compile
+#endif
 
 using namespace std;
 
@@ -58,16 +66,24 @@ public:
     : m_startMsecs(0)
     , m_accumulator(accumulator)
     {
+#ifdef __unix__
         timeval tv;
         gettimeofday(&tv, NULL);
         m_startMsecs = tv.tv_sec*1000 + tv.tv_usec/1000;
+#elif defined _WIN32
+        m_startMsecs = GetTickCount();
+#endif
     }
     
     ~CTimer()
     {
+#ifdef __unix__
         timeval tv;
         gettimeofday(&tv, NULL);
         unsigned int elapsed = tv.tv_sec*1000 + tv.tv_usec/1000 - m_startMsecs;
+#elif defined _WIN32
+        unsigned int elapsed = GetTickCount() - m_startMsecs;
+#endif
         m_accumulator.AddRecord(elapsed);
     }
 private:
@@ -88,8 +104,14 @@ namespace
 };
 
 #define PRINT_OK(x) printf("%d ", x)
-#define PRINT_BAD(x) printf("\033[0;31m%d \033[0m", x)
-#define PRINT_CONST(x) printf("\033[0;32m%d \033[0m", x)
+
+#ifdef __unix__
+    #define PRINT_BAD(x) printf("\033[0;31m%d \033[0m", x)
+    #define PRINT_CONST(x) printf("\033[0;32m%d \033[0m", x)
+#else
+    #define PRINT_BAD(x) PRINT_OK(x)
+    #define PRINT_CONST(x) PRINT_OK(x)
+#endif
 
 #define val                 active.m_val
 #define conf                active.m_conf
@@ -268,7 +290,7 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
 #define SET_CONF(r, c, n) totalConf -= conf[r][c]; conf[r][c] = n; totalConf += n;
 #define SET_CONF_INFINITE(r, c) totalConf -= conf[r][c]; conf[r][c] = kInfiniteConf; totalConf += kMaxConf;
 
-inline void UpdateCellConf(size_t r, size_t c, uint8_t newVal, size_t r2, size_t c2)
+inline void UpdateCellConf(uint8_t r, uint8_t c, uint8_t newVal, uint8_t r2, uint8_t c2)
 {
     if (!val[r2][c2])
         return;
@@ -291,7 +313,7 @@ inline void UpdateCellConf(size_t r, size_t c, uint8_t newVal, size_t r2, size_t
     }
 }
 
-inline void UpdateCellConstraintMap(size_t r, size_t c, uint8_t newVal, size_t r2, size_t c2)
+inline void UpdateCellConstraintMap(uint8_t r, uint8_t c, uint8_t newVal, uint8_t r2, uint8_t c2)
 {
     if (val[r][c])
     {
@@ -363,8 +385,6 @@ int Search()
     
     while (true)
     {
-        Restore();
-        
         if (PickPosition(next_r, next_c))
             MakeAssignment(next_r, next_c, PickNum(next_r, next_c));
         else
@@ -377,17 +397,18 @@ int Search()
         }
         else
         {
+            Restore();
             stuckCount++;
-        }
-        
-        if (totalConf > master.m_totalConf)
-        {
-            Commit();
         }
         
         if (stuckCount == 20)
         {
+            if (totalConf > master.m_totalConf)
+            {
+                Commit();
+            }
             memcpy(&candidate, &blank, sizeof(SWorkingSet));
+            Restore();
         }
     }
     
