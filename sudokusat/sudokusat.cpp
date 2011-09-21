@@ -6,6 +6,10 @@
 #include <cstring>
 #include <algorithm>
 
+#ifdef __APPLE__
+	#define __unix__ 1
+#endif
+
 #ifdef __unix__
     #include <stdint.h>
     #include <sys/time.h>
@@ -46,9 +50,9 @@ public:
         }
         sort(records.begin(), records.end());
         
-        printf("Total time   : %d ms\n", total);
-        printf("Average time : %d ms\n", total/records.size());
-        printf("Median time  : %d ms\n", records[records.size() / 2]); 
+        printf("Total time   : %u ms\n", total);
+        printf("Average time : %u ms\n", (unsigned int) (total/records.size()));
+        printf("Median time  : %u ms\n", records[records.size() / 2]); 
     }
 
     void AddRecord(unsigned int time)
