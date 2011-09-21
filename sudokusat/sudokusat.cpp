@@ -402,7 +402,7 @@ int Search()
             stuckCount++;
         }
         
-        if (stuckCount == 20)
+        if (stuckCount == 9)
         {
             if (totalConf > master.m_totalConf)
             {
@@ -410,6 +410,7 @@ int Search()
             }
             memcpy(&candidate, &blank, sizeof(SWorkingSet));
             Restore();
+            stuckCount=0;
         }
     }
     
