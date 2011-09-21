@@ -103,6 +103,8 @@ namespace
 	SWorkingSet master;
 	SWorkingSet blank;
 	
+	uint8_t question[9][9];
+	
 	const uint8_t kMaxConf = 21;
 	const uint8_t kInfiniteConf = kMaxConf+1;
 	const uint8_t kSubsquareMin[9] = {0, 0, 0, 3, 3, 3, 6 ,6, 6}; //hardcode > division!
@@ -414,6 +416,18 @@ int Search()
     return 0;
 }
 
+void MakeQuestionAssignments()
+{
+	for (uint8_t r=0; r<9; ++r)
+	{
+		for (uint8_t c=0; c<9; ++c)
+		{
+			if (question[r][c])
+				MakeAssignment(r, c, question[r][c], true);
+		}
+	}
+}
+
 bool ReadFile(char* szFileName)
 {
     FILE* pFile = fopen(szFileName, "r");
@@ -434,10 +448,7 @@ bool ReadFile(char* szFileName)
 	            printf("Invalid file format: %s\n", szFileName);
 	            return false;
 	        }
-	        if (buf[0] != '_')
-	        {
-	            MakeAssignment(i, j, (uint8_t) (atoi(buf)), true);
-	        }
+			question[i][j] = (buf[0] != '_') ? (uint8_t) (atoi(buf)) : 0;
 	    }
 	}
 	return true;
@@ -461,9 +472,7 @@ int main(int argc, char** argv)
         
     int nRet = 0;
     
-    Save();
-    Commit();
-    memcpy(&blank, &active, sizeof(SWorkingSet));
+
     
     unsigned int seed=time(NULL) % 1000; //shorter, easier to reproduce
     unsigned int iters=1;
@@ -493,12 +502,20 @@ int main(int argc, char** argv)
     CAccumulator accumulator;
     for (unsigned int i=0; i<iters; ++i)
     { 
+		CTimer t(accumulator); //start timer
+		
+	    memset(&active, 0, sizeof(SWorkingSet));
+        memset(&candidate, 0, sizeof(SWorkingSet));
+        memset(&master, 0, sizeof(SWorkingSet));
+		memset(&blank, 0, sizeof(SWorkingSet));
+	
         srand(seed+i);
-        memcpy(&active, &blank, sizeof(SWorkingSet));
-        memcpy(&candidate, &blank, sizeof(SWorkingSet));
-        memcpy(&master, &blank, sizeof(SWorkingSet));
-        
-        CTimer t(accumulator); //start timer
+		
+		MakeQuestionAssignments();
+		Save();
+		Commit();
+		memcpy(&blank, &active, sizeof(SWorkingSet));
+		
         nRet = Search();
         //end timer
     }
