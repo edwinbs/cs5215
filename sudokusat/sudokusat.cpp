@@ -125,25 +125,25 @@ namespace
 #define constraintMap       active.m_constraintMap
 
 //active --> master
-void Commit()
+inline void Commit()
 {
     memcpy(&master, &candidate, sizeof(SWorkingSet));
 }
 
 //active --> candidate
-void Save()
+inline void Save()
 {
     memcpy(&candidate, &active, sizeof(SWorkingSet));
 }
 
 //candidate --> active
-void Restore()
+inline void Restore()
 {
     memcpy(&active, &candidate, sizeof(SWorkingSet));
 }
 
 //master --> active
-void Checkout()
+inline void Checkout()
 {
     memcpy(&active, &master, sizeof(SWorkingSet));
 }
@@ -157,19 +157,6 @@ void PrintSolution()
             if (conf[i][j] == kInfiniteConf) PRINT_CONST(val[i][j]);
             else if (conf[i][j] >= kMaxConf) PRINT_OK(val[i][j]);
             else PRINT_BAD(val[i][j]);
-        }
-        printf("\n");
-    }
-}
-
-void PrintConfidence()
-{
-    printf("\n");
-    for (uint8_t r=0; r<9; ++r)
-    {
-        for (uint8_t c=0; c<9; ++c)
-        {
-            printf("%02d|\033[0;34m%02d\033[0m ", conf[r][c], cc[r][c]);
         }
         printf("\n");
     }
@@ -217,6 +204,7 @@ uint8_t PickNum(uint8_t r, uint8_t c)
         }
     }
     
+	//Rule: find a number with the lowest maximum confidence
     vector<uint8_t> candidates2;
     uint8_t minConf = kInfiniteConf;
     for (uint8_t i =0; i<9; ++i)
@@ -234,6 +222,8 @@ uint8_t PickNum(uint8_t r, uint8_t c)
 
 bool PickPosition(uint8_t& out_r, uint8_t& out_c)
 {
+	//Rule 1: Pick a cell with the lowest confidence
+
     uint8_t minConf = kInfiniteConf;
     std::vector<SPos> candidates1;
     
@@ -252,7 +242,7 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
         }
     }
    
-    if (minConf >= kMaxConf)
+    if (minConf >= kMaxConf) //No one has imperfect confidence, we have a solution!
         return false;
     
     if (candidates1.size() == 1)
@@ -261,6 +251,8 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
         out_c = candidates1[0].c;
         return true;
     }
+
+	//Rule 2: tie-breaker. Pick a cell which has the most number of unique constraints in its neighborhood.
     
     std::vector<SPos> candidates2;
     uint8_t maxCC = 0;
@@ -284,6 +276,8 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
         return true;
     }
     
+	//Rule 3: tie-breaker. No more rules! Just pick someone randomly.
+
     uint8_t lucky = rand() % count2;
     out_r = candidates2[lucky].r;
     out_c = candidates2[lucky].c;
