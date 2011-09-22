@@ -5,6 +5,7 @@
 #include <time.h>
 #include <cstring>
 #include <algorithm>
+#include <string>
 
 #ifdef __APPLE__
 	#define __unix__ 1
@@ -41,6 +42,9 @@ typedef struct
 class CAccumulator
 {
 public:
+	CAccumulator(const std::string& name) : m_name(name)
+	{}
+
     ~CAccumulator()
     {
         unsigned int total=0;
@@ -50,6 +54,7 @@ public:
         }
         sort(records.begin(), records.end());
         
+		printf("Accumulator [%s]\n", m_name.c_str());
         printf("Total time   : %u ms\n", total);
         printf("Average time : %u ms\n", (unsigned int) (total/records.size()));
         printf("Median time  : %u ms\n", records[records.size() / 2]); 
@@ -61,6 +66,7 @@ public:
     }
     
 private:
+	std::string			 m_name;
     vector<unsigned int> records;
 };
 
@@ -71,27 +77,26 @@ public:
     : m_startMsecs(0)
     , m_accumulator(accumulator)
     {
-#ifdef __unix__
-        timeval tv;
-        gettimeofday(&tv, NULL);
-        m_startMsecs = tv.tv_sec*1000 + tv.tv_usec/1000;
-#elif defined _WIN32
-        m_startMsecs = GetTickCount();
-#endif
+        m_startMsecs = CTimer::Now();
     }
     
     ~CTimer()
     {
-#ifdef __unix__
-        timeval tv;
-        gettimeofday(&tv, NULL);
-        unsigned int elapsed = tv.tv_sec*1000 + tv.tv_usec/1000 - m_startMsecs;
-#elif defined _WIN32
-        unsigned int elapsed = GetTickCount() - m_startMsecs;
-#endif
+        unsigned int elapsed = CTimer::Now() - m_startMsecs;
         m_accumulator.AddRecord(elapsed);
     }
 private:
+	static unsigned int Now()
+	{
+#ifdef __unix__
+        timeval tv;
+        gettimeofday(&tv, NULL);
+        return tv.tv_sec*1000 + tv.tv_usec/1000;
+#elif defined _WIN32
+        return GetTickCount();
+#endif
+	}
+
     unsigned int    m_startMsecs;
     CAccumulator&   m_accumulator;
 };
@@ -104,6 +109,11 @@ namespace
 	SWorkingSet blank;
 	
 	uint8_t question[9][9];
+	
+#ifdef _DEBUG
+    CAccumulator pickPosAcc("PickPosition");
+    CAccumulator pickNumAcc("pickNumAcc");
+#endif
 	
 	const uint8_t kMaxConf = 21;
 	const uint8_t kInfiniteConf = kMaxConf+1;
@@ -166,6 +176,10 @@ void PrintSolution()
 
 uint8_t PickNum(uint8_t r, uint8_t c)
 {
+#ifdef _DEBUG
+	CTimer t(pickNumAcc);
+#endif
+	
     uint8_t maxConf[9] = {0};
     
     //Row
@@ -224,6 +238,10 @@ uint8_t PickNum(uint8_t r, uint8_t c)
 
 bool PickPosition(uint8_t& out_r, uint8_t& out_c)
 {
+#ifdef _DEBUG
+	CTimer t(pickPosAcc);
+#endif
+	
 	//Rule 1: Pick a cell with the lowest confidence
 
     uint8_t minConf = kInfiniteConf;
@@ -500,7 +518,7 @@ int main(int argc, char** argv)
         printf("Seeds=%d to %d\n", seed, seed+iters-1);
     }
     
-    CAccumulator accumulator;
+    CAccumulator accumulator("All");
     for (unsigned int i=0; i<iters; ++i)
     { 
 		CTimer t(accumulator); //start timer
