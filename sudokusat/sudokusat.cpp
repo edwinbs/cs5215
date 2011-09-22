@@ -400,7 +400,7 @@ void MakeAssignment(uint8_t r, uint8_t c, uint8_t newVal, bool fixed=false)
 int Search()
 {
     uint8_t next_r = 0, next_c=0;
-    int stuckCount = 0;
+    uint8_t stuckCount = 0;
     
     while (true)
     {
@@ -409,10 +409,14 @@ int Search()
         else
             return 1;
             
-        if (totalConf > candidate.m_totalConf)
+        if (totalConf >= candidate.m_totalConf)
         {
+            if (totalConf == candidate.m_totalConf)
+                stuckCount++;
+            else
+                stuckCount = 0;
+            
             Save();
-            stuckCount = 0;
         }
         else
         {
@@ -491,8 +495,6 @@ int main(int argc, char** argv)
         
     int nRet = 0;
     
-
-    
     unsigned int seed=time(NULL) % 1000; //shorter, easier to reproduce
     unsigned int iters=1;
     
@@ -518,10 +520,14 @@ int main(int argc, char** argv)
         printf("Seeds=%d to %d\n", seed, seed+iters-1);
     }
     
+#ifdef _DEBUG
     CAccumulator accumulator("All");
+#endif
     for (unsigned int i=0; i<iters; ++i)
     { 
+#ifdef _DEBUG
 		CTimer t(accumulator); //start timer
+#endif
 		
 	    memset(&active, 0, sizeof(SWorkingSet));
         memset(&candidate, 0, sizeof(SWorkingSet));
