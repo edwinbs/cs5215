@@ -110,12 +110,14 @@ namespace
 	
 	uint8_t question[9][9];
 	
+#ifdef _DEBUG
+    CAccumulator pickPosAcc("PickPosition");
+    CAccumulator pickNumAcc("pickNumAcc");
+#endif
+	
 	const uint8_t kMaxConf = 21;
 	const uint8_t kInfiniteConf = kMaxConf+1;
 	const uint8_t kSubsquareMin[9] = {0, 0, 0, 3, 3, 3, 6 ,6, 6}; //hardcode > division!
-	
-	CAccumulator pickPosAcc("Pick Position");
-	CAccumulator pickNumAcc("Pick Number");
 };
 
 #define PRINT_OK(x) printf("%d ", x)
@@ -174,7 +176,9 @@ void PrintSolution()
 
 uint8_t PickNum(uint8_t r, uint8_t c)
 {
+#ifdef _DEBUG
 	CTimer t(pickNumAcc);
+#endif
 	
     uint8_t maxConf[9] = {0};
     
@@ -234,7 +238,9 @@ uint8_t PickNum(uint8_t r, uint8_t c)
 
 bool PickPosition(uint8_t& out_r, uint8_t& out_c)
 {
+#ifdef _DEBUG
 	CTimer t(pickPosAcc);
+#endif
 	
 	//Rule 1: Pick a cell with the lowest confidence
 
