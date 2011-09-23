@@ -1,11 +1,14 @@
 #include <cstdlib>
 #include <stdarg.h>
 #include <stdio.h>
-#include <vector>
 #include <time.h>
 #include <cstring>
+
+#ifdef _TIMERS
+#include <vector>
 #include <algorithm>
 #include <string>
+#endif
 
 #ifdef __APPLE__
 	#define __unix__ 1
@@ -24,10 +27,13 @@
 
 using namespace std;
 
-typedef struct
+typedef struct _SPos
 {
     uint8_t r;
     uint8_t c;
+    
+    _SPos() : r(0), c(0) {}
+    _SPos(uint8_t in_r, uint8_t in_c) : r(in_r), c(in_c) {}
 } SPos;
 
 typedef struct
@@ -37,12 +43,17 @@ typedef struct
 	uint8_t     m_cc[9][9];
 	uint16_t    m_totalConf;
 	uint8_t     m_constraintMap[9][9][9];
+	
+    uint8_t     m_emptyCellsCnt;
+    uint8_t     m_possibleEmptyCellsCnt;
+    SPos        m_possibleEmptyCells[81];
 } SWorkingSet;
 
+#ifdef _TIMERS
 class CAccumulator
 {
 public:
-	CAccumulator(const std::string& name) : m_name(name)
+	explicit CAccumulator(const std::string& name) : m_name(name)
 	{}
 
     ~CAccumulator()
@@ -100,6 +111,7 @@ private:
     unsigned int    m_startMsecs;
     CAccumulator&   m_accumulator;
 };
+#endif //_TIMERS
 
 namespace
 {
@@ -110,9 +122,12 @@ namespace
 	
 	uint8_t question[9][9];
 	
-#ifdef _DEBUG
-    CAccumulator pickPosAcc("PickPosition");
-    CAccumulator pickNumAcc("pickNumAcc");
+    bool g_bPrintComments = false;
+    bool g_bNoColor = false;
+	
+#ifdef _TIMERS
+    CAccumulator pickPosAcc("PickPosition()");
+    CAccumulator pickNumAcc("PickNumber()");
 #endif
 	
 	const uint8_t kMaxConf = 21;
@@ -130,11 +145,15 @@ namespace
     #define PRINT_CONST(x) PRINT_OK(x)
 #endif
 
-#define val                 active.m_val
-#define conf                active.m_conf
-#define cc                  active.m_cc
-#define totalConf           active.m_totalConf
-#define constraintMap       active.m_constraintMap
+#define val                     active.m_val
+#define conf                    active.m_conf
+#define cc                      active.m_cc
+#define totalConf               active.m_totalConf
+#define constraintMap           active.m_constraintMap
+
+#define emptyCellsCnt           active.m_emptyCellsCnt
+#define possibleEmptyCellsCnt   active.m_possibleEmptyCellsCnt
+#define possibleEmptyCells      active.m_possibleEmptyCells
 
 //active --> master
 inline void Commit()
@@ -176,7 +195,7 @@ void PrintSolution()
 
 uint8_t PickNum(uint8_t r, uint8_t c)
 {
-#ifdef _DEBUG
+#ifdef _TIMERS
 	CTimer t(pickNumAcc);
 #endif
 	
@@ -221,42 +240,77 @@ uint8_t PickNum(uint8_t r, uint8_t c)
     }
     
 	//Rule: find a number with the lowest maximum confidence
-    vector<uint8_t> candidates2;
+    uint8_t candidates[9];
+    uint8_t candidatesCnt=0;
     uint8_t minConf = kInfiniteConf;
     for (uint8_t i =0; i<9; ++i)
     {
         if (maxConf[i] < minConf)
         {
-            candidates2.clear();
+            candidatesCnt=0;
             minConf = maxConf[i];
         }
         if (maxConf[i] <= minConf)
-            candidates2.push_back(i);
+            candidates[candidatesCnt++] = i;
     }
-    return candidates2[rand() % candidates2.size()] + 1;
+    return candidates[rand() % candidatesCnt] + 1;
 }
 
 bool PickPosition(uint8_t& out_r, uint8_t& out_c)
 {
-#ifdef _DEBUG
+#ifdef _TIMERS
 	CTimer t(pickPosAcc);
 #endif
+	
+	if (emptyCellsCnt)
+	{
+	    SPos candidates2[81];
+        uint8_t candidates2Cnt=0;
+	    
+	    uint8_t maxCC = 0;
+        for (uint8_t i=0; i<possibleEmptyCellsCnt; ++i)
+        {
+            uint8_t ir = possibleEmptyCells[i].r, ic= possibleEmptyCells[i].c;
+            if (!val[ir][ic] && (cc[ir][ic] > maxCC))
+                candidates2Cnt=0;
+            if (!val[ir][ic] && (cc[ir][ic] >= maxCC))
+            {
+                candidates2[candidates2Cnt++] = possibleEmptyCells[i];
+                maxCC = cc[ir][ic];
+            }
+        }
+        
+        if (candidates2Cnt == 1)
+        {
+            out_r = candidates2[0].r;
+            out_c = candidates2[0].c;
+            return true;
+        }
+
+    	//Rule 3: tie-breaker. No more rules! Just pick someone randomly.
+
+        uint8_t lucky = rand() % candidates2Cnt;
+        out_r = candidates2[lucky].r;
+        out_c = candidates2[lucky].c;
+        return true;
+	}
 	
 	//Rule 1: Pick a cell with the lowest confidence
 
     uint8_t minConf = kInfiniteConf;
-    std::vector<SPos> candidates1;
+    
+    SPos candidates1[81];
+    uint8_t candidates1Cnt=0;
     
     for (uint8_t r=0; r<9; ++r)
     {
         for (uint8_t c=0; c<9; ++c)
         {
-            SPos p = {r, c};
             if (conf[r][c] < minConf)
-                candidates1.clear();
+                candidates1Cnt=0;
             if (conf[r][c] <= minConf)
             {
-                candidates1.push_back(p);
+                candidates1[candidates1Cnt++] = SPos(r, c);
                 minConf = conf[r][c];
             }
         }
@@ -265,7 +319,7 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
     if (minConf >= kMaxConf) //No one has imperfect confidence, we have a solution!
         return false;
     
-    if (candidates1.size() == 1)
+    if (candidates1Cnt == 1)
     {
         out_r = candidates1[0].r;
         out_c = candidates1[0].c;
@@ -274,22 +328,23 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
 
 	//Rule 2: tie-breaker. Pick a cell which has the most number of unique constraints in its neighborhood.
     
-    std::vector<SPos> candidates2;
+    SPos candidates2[81];
+    uint8_t candidates2Cnt=0;
+    
     uint8_t maxCC = 0;
     
-    for (std::vector<SPos>::iterator it=candidates1.begin(); it != candidates1.end(); ++it)
+    for (uint8_t i=0; i<candidates1Cnt; ++i)
     {
-        if (cc[it->r][it->c] > maxCC)
-            candidates2.clear();
-        if (cc[it->r][it->c] >= maxCC)
+        if (cc[candidates1[i].r][candidates1[i].c] > maxCC)
+            candidates2Cnt=0;
+        if (cc[candidates1[i].r][candidates1[i].c] >= maxCC)
         {
-            candidates2.push_back(*it);
-            maxCC = cc[it->r][it->c];
+            candidates2[candidates2Cnt++] = candidates1[i];
+            maxCC = cc[candidates1[i].r][candidates1[i].c];
         }
     }
     
-    uint8_t count2 = (uint8_t) candidates2.size();
-    if (count2 == 1)
+    if (candidates2Cnt == 1)
     {
         out_r = candidates2[0].r;
         out_c = candidates2[0].c;
@@ -298,7 +353,7 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
     
 	//Rule 3: tie-breaker. No more rules! Just pick someone randomly.
 
-    uint8_t lucky = rand() % count2;
+    uint8_t lucky = rand() % candidates2Cnt;
     out_r = candidates2[lucky].r;
     out_c = candidates2[lucky].c;
     return true;
@@ -358,9 +413,9 @@ inline void VisitCell(uint8_t r, uint8_t c, uint8_t newVal, uint8_t r2, uint8_t 
     UpdateCellConf(r, c, newVal, r2, c2);
 }
 
-void MakeAssignment(uint8_t r, uint8_t c, uint8_t newVal, bool fixed=false)
+void MakeAssignment(uint8_t r, uint8_t c, uint8_t newVal, bool initial=false)
 {
-    if (val[r][c] == newVal) return;
+    if ((val[r][c] == newVal) && !initial) return;
     
     SET_CONF(r, c, newVal?1:0);
     
@@ -389,9 +444,20 @@ void MakeAssignment(uint8_t r, uint8_t c, uint8_t newVal, bool fixed=false)
         }
     }
     
+    if (!initial && !val[r][c])
+    {
+        --emptyCellsCnt;
+    }
+    
+    if (!newVal)
+    {
+        ++emptyCellsCnt;
+        possibleEmptyCells[possibleEmptyCellsCnt++] = SPos(r, c);
+    }
+    
     val[r][c] = newVal;
     
-    if (fixed)
+    if (initial && newVal)
     {
         SET_CONF_INFINITE(r, c);
     }
@@ -445,8 +511,7 @@ void MakeQuestionAssignments()
 	{
 		for (uint8_t c=0; c<9; ++c)
 		{
-			if (question[r][c])
-				MakeAssignment(r, c, question[r][c], true);
+			MakeAssignment(r, c, question[r][c], true);
 		}
 	}
 }
@@ -477,55 +542,80 @@ bool ReadFile(char* szFileName)
 	return true;
 }
 
+void PrintInstruction()
+{
+    printf("SUDOKU SAT SOLVER by Edwin and Tat Thang\n");
+    printf("Usage: sudokusat <input-file> [options]\n");
+    printf("Options:\n");
+    printf("-s --seed [num]\n");
+    printf("    Use [num] as the initial seed\n");
+    printf("-i --iterations [num]\n");
+    printf("    Run [num] iterations with incrementing seeds\n");
+    printf("-c --comments\n");
+    printf("    Print comments on satisfiability\n");
+#ifdef __unix__
+    printf("-n --no-color\n");
+    printf("    Do not print in colors\n");
+#endif
+}
+
 int main(int argc, char** argv)
 {
     if (argc<2)
     {
-        printf("SUDOKU SAT SOLVER\n");
-        printf("Usage: sudokusat <input-file> [options]\n");
-        printf("Options:\n");
-        printf("-s <seed>  : use the specified seed\n");
-        printf("-i <num>   : run a number of iterations with incrementing seeds\n");
-        printf("             if -s is specified, it will be the first seed\n");
+        PrintInstruction();
         return -1;
     }
-    
-    if (!ReadFile(argv[1]))
-        return -1;
-        
-    int nRet = 0;
     
     unsigned int seed=time(NULL) % 1000; //shorter, easier to reproduce
-    unsigned int iters=1;
+    int iters=1;
     
-    for (uint8_t i=2; i+1<argc; i+=2)
+    try
     {
-        if (strcmp(argv[i], "-s") == 0)
+        if (!ReadFile(argv[1]))
+            return -1;
+    
+        for (uint8_t i=2; i+1<argc; i++)
         {
-            seed = atoi(argv[i+1]);
-        }
+            if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--seed") == 0)
+                seed = atoi(argv[++i]);
         
-        if (strcmp(argv[i], "-i") == 0)
-        {
-            iters = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--iterations") == 0)
+                iters = atoi(argv[++i]);
+            
+            else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--comments") == 0)
+                g_bPrintComments = true;
+            
+#ifdef __unix__    
+            else if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--no-color") == 0)
+                g_bNoColor = true;
+#endif
         }
     }
-    
-    if (iters == 1)
+    catch (...)
     {
-        printf("Seed=%d\n", seed);
-    }
-    else
-    {
-        printf("Seeds=%d to %d\n", seed, seed+iters-1);
+        PrintInstruction();
     }
     
-#ifdef _DEBUG
+    if (iters <= 0)
+        iters = 1;
+    
+    if (g_bPrintComments)
+    {
+        if (iters == 1)
+            printf("Seed=%d\n", seed);
+        else
+            printf("Seeds=%d to %d\n", seed, seed+iters-1);
+    }
+    
+    int nRet = 0;
+    
+#ifdef _TIMERS
     CAccumulator accumulator("All");
 #endif
     for (unsigned int i=0; i<iters; ++i)
     { 
-#ifdef _DEBUG
+#ifdef _TIMERS
 		CTimer t(accumulator); //start timer
 #endif
 		
@@ -547,12 +637,16 @@ int main(int argc, char** argv)
     
     if (nRet) //Found a solution
     {
-        printf("Satisfiable: yes\n");
+        if (g_bPrintComments)
+            printf("Satisfiable: yes\n");
     }
     else //No solution
     {
-        printf("Satisfiable: unknown\n");
-        printf("Best available solution:\n");
+        if (g_bPrintComments)
+        {
+            printf("Satisfiable: unknown\n");
+            printf("Best available solution:\n");
+        }
         Checkout();
     }
     
