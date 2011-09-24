@@ -65,10 +65,10 @@ public:
         }
         sort(records.begin(), records.end());
         
-		printf("Accumulator [%s]\n", m_name.c_str());
-        printf("Total time   : %u ms\n", total);
-        printf("Average time : %u ms\n", (unsigned int) (total/records.size()));
-        printf("Median time  : %u ms\n", records[records.size() / 2]); 
+		printf("# Accumulator [%s]\n", m_name.c_str());
+        printf("# Total time   : %u ms\n", total);
+        printf("# Average time : %u ms\n", (unsigned int) (total/records.size()));
+        printf("# Median time  : %u ms\n", records[records.size() / 2]); 
     }
 
     void AddRecord(unsigned int time)
@@ -77,8 +77,8 @@ public:
     }
     
 private:
-	std::string			 m_name;
-    vector<unsigned int> records;
+	std::string             m_name;
+    vector<unsigned int>    records;
 };
 
 class CTimer
@@ -113,6 +113,29 @@ private:
 };
 #endif //_TIMERS
 
+class CFileSmartPtr
+{
+public:
+    CFileSmartPtr() : m_pFile(NULL) {}
+    ~CFileSmartPtr() { this->Close(); }
+    
+    void Attach(FILE* pFile) { this->Close(); }
+    
+    FILE* Get() { return m_pFile; }
+    
+private:
+    void Close()
+    {
+        if (m_pFile)
+        {
+            fclose(m_pFile);
+            m_pFile = NULL;
+        }
+    }
+    
+    FILE*   m_pFile;
+};
+
 namespace
 {
 	SWorkingSet active;
@@ -122,8 +145,8 @@ namespace
 	
 	uint8_t question[9][9];
 	
-    bool g_bPrintComments = false;
-    bool g_bNoColor = false;
+    bool    g_bColor = false;
+    FILE*   g_pOutputFile = NULL;
 	
 #ifdef _TIMERS
     CAccumulator pickPosAcc("PickPosition()");
@@ -135,15 +158,17 @@ namespace
 	const uint8_t kSubsquareMin[9] = {0, 0, 0, 3, 3, 3, 6 ,6, 6}; //hardcode > division!
 };
 
-#define PRINT_OK(x) printf("%d ", x)
-
-#ifdef __unix__
-    #define PRINT_BAD(x) printf("\033[0;31m%d \033[0m", x)
-    #define PRINT_CONST(x) printf("\033[0;32m%d \033[0m", x)
-#else
-    #define PRINT_BAD(x) PRINT_OK(x)
-    #define PRINT_CONST(x) PRINT_OK(x)
-#endif
+inline void PrintEx(const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    char buf[128] = {0};
+    vsprintf(buf, format, ap);
+    if (!g_pOutputFile)
+        printf("%s", buf);
+    else
+        fprintf(g_pOutputFile, "%s", buf);
+}
 
 #define val                     active.m_val
 #define conf                    active.m_conf
@@ -185,11 +210,9 @@ void PrintSolution()
     {
         for (uint8_t j=0; j<9; ++j)
         {
-            if (conf[i][j] == kInfiniteConf) PRINT_CONST(val[i][j]);
-            else if (conf[i][j] >= kMaxConf) PRINT_OK(val[i][j]);
-            else PRINT_BAD(val[i][j]);
+            PrintEx("%d ", val[i][j]);
         }
-        printf("\n");
+        PrintEx("\n");
     }
 }
 
@@ -525,20 +548,25 @@ bool ReadFile(char* szFileName)
         return false;
     }
     
-    for (uint8_t i=0; i<9; ++i)
-	{
-	    for (uint8_t j=0; j<9; ++j)
-	    {
-	        char buf[2] = {0};
-	        int ret = fscanf(pFile, "%s", buf);
-	        if (ret==EOF || ret==0)
-	        {
-	            printf("Invalid file format: %s\n", szFileName);
+    uint8_t r=0;
+    char line[20] = {0};
+    while (fgets(line, sizeof(line), pFile))
+    {
+        if (*line == '#') continue;
+        char buf[2] = {0};
+        for (uint8_t c=0; c<9; ++c)
+        {
+            int ret = sscanf(line+c*2, "%s", buf);
+            if (ret==EOF || ret==0)
+            {
+                printf("Invalid file format: %s\n", szFileName);
 	            return false;
-	        }
-			question[i][j] = (buf[0] != '_') ? (uint8_t) (atoi(buf)) : 0;
-	    }
-	}
+            }
+            question[r][c] = (buf[0] != '_') ? (uint8_t) (atoi(buf)) : 0;
+        }
+        ++r;
+    }
+    
 	return true;
 }
 
@@ -551,12 +579,6 @@ void PrintInstruction()
     printf("    Use [num] as the initial seed\n");
     printf("-i --iterations [num]\n");
     printf("    Run [num] iterations with incrementing seeds\n");
-    printf("-c --comments\n");
-    printf("    Print comments on satisfiability\n");
-#ifdef __unix__
-    printf("-n --no-color\n");
-    printf("    Do not print in colors\n");
-#endif
 }
 
 int main(int argc, char** argv)
@@ -569,6 +591,7 @@ int main(int argc, char** argv)
     
     unsigned int seed=time(NULL) % 1000; //shorter, easier to reproduce
     int iters=1;
+    CFileSmartPtr fsp;
     
     try
     {
@@ -582,14 +605,12 @@ int main(int argc, char** argv)
         
             else if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--iterations") == 0)
                 iters = atoi(argv[++i]);
-            
-            else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--comments") == 0)
-                g_bPrintComments = true;
-            
-#ifdef __unix__    
-            else if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--no-color") == 0)
-                g_bNoColor = true;
-#endif
+                
+            else if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0)
+            {
+                g_pOutputFile = fopen(argv[++i], "w");
+                fsp.Attach(g_pOutputFile);
+            }
         }
     }
     catch (...)
@@ -600,13 +621,10 @@ int main(int argc, char** argv)
     if (iters <= 0)
         iters = 1;
     
-    if (g_bPrintComments)
-    {
-        if (iters == 1)
-            printf("Seed=%d\n", seed);
-        else
-            printf("Seeds=%d to %d\n", seed, seed+iters-1);
-    }
+    if (iters == 1)
+        PrintEx("# Seed=%d\n", seed);
+    else
+        PrintEx("# Seeds=%d to %d\n", seed, seed+iters-1);
     
     int nRet = 0;
     
@@ -637,16 +655,12 @@ int main(int argc, char** argv)
     
     if (nRet) //Found a solution
     {
-        if (g_bPrintComments)
-            printf("Satisfiable: yes\n");
+        PrintEx("# Satisfiable: yes\n");
     }
     else //No solution
     {
-        if (g_bPrintComments)
-        {
-            printf("Satisfiable: unknown\n");
-            printf("Best available solution:\n");
-        }
+        PrintEx("# Satisfiable: unknown\n");
+        PrintEx("# Best available solution:\n");
         Checkout();
     }
     
