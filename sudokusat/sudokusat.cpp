@@ -1,14 +1,24 @@
+/**
+ * sudokusat.cpp
+ * 
+ * Sudoku solver based on local search on SAT formulation.
+ *
+ * To build:
+ * Linux/Mac OS X: g++ -o sudokusat -O3 sudokusat.cpp
+ * Windows       : cl /O2 sudokusat.cpp /link
+ *
+ * To enable timers: define _TIMERS on preprocessor (-d or /D)
+ *
+ * @author  Edwin Boaz Soenaryo
+ * @author  Nguyen Tat Thang
+ */
+
 #include <cstdlib>
 #include <stdarg.h>
 #include <stdio.h>
 #include <time.h>
 #include <cstring>
-
-#ifdef _TIMERS
-#include <vector>
-#include <algorithm>
-#include <string>
-#endif
+#include "utils.h"
 
 #ifdef __APPLE__
 	#define __unix__ 1
@@ -27,6 +37,7 @@
 
 using namespace std;
 
+//(row, column) struct
 typedef struct _SPos
 {
     uint8_t r;
@@ -38,115 +49,30 @@ typedef struct _SPos
 
 typedef struct
 {
-	uint8_t     m_val[9][9];
-	uint8_t     m_conf[9][9];
-	uint8_t     m_cc[9][9];
-	uint16_t    m_totalConf;
-	uint8_t     m_constraintMap[9][9][9];
+	uint8_t     m_val[9][9];    //Value assigned to each cell, 0 means cell is empty
+	uint8_t     m_conf[9][9];   //Confidence: the number of constraints involving a cell that is satisfied
+	uint8_t     m_cc[9][9];     //Count of unique constraining numbers on a cell
+	uint16_t    m_totalConf;    //Sum of all values in m_conf
+	uint8_t     m_constraintMap[9][9][9];   //Used for DP updating m_cc
+	                                        //m_constraintMap[r][c][n]: no of appearance of n in the neighborhood of (r, c)
 	
-    uint8_t     m_emptyCellsCnt;
-    uint8_t     m_possibleEmptyCellsCnt;
-    SPos        m_possibleEmptyCells[81];
+	//Used for DP:
+    uint8_t     m_emptyCellsCnt;            //Count of cells that are empty
+    uint8_t     m_possibleEmptyCellsCnt;    //Count of cells that have ever been empty
+    SPos        m_possibleEmptyCells[81];   //Cells that have ever been empty
 } SWorkingSet;
-
-#ifdef _TIMERS
-class CAccumulator
-{
-public:
-	explicit CAccumulator(const std::string& name) : m_name(name)
-	{}
-
-    ~CAccumulator()
-    {
-        unsigned int total=0;
-        for (vector<unsigned int>::iterator it=records.begin(); it!=records.end(); ++it)
-        {
-            total += *it;
-        }
-        sort(records.begin(), records.end());
-        
-		printf("# Accumulator [%s]\n", m_name.c_str());
-        printf("# Total time   : %u ms\n", total);
-        printf("# Average time : %u ms\n", (unsigned int) (total/records.size()));
-        printf("# Median time  : %u ms\n", records[records.size() / 2]); 
-    }
-
-    void AddRecord(unsigned int time)
-    {
-        records.push_back(time);
-    }
-    
-private:
-	std::string             m_name;
-    vector<unsigned int>    records;
-};
-
-class CTimer
-{
-public:
-    CTimer(CAccumulator& accumulator)
-    : m_startMsecs(0)
-    , m_accumulator(accumulator)
-    {
-        m_startMsecs = CTimer::Now();
-    }
-    
-    ~CTimer()
-    {
-        unsigned int elapsed = CTimer::Now() - m_startMsecs;
-        m_accumulator.AddRecord(elapsed);
-    }
-private:
-	static unsigned int Now()
-	{
-#ifdef __unix__
-        timeval tv;
-        gettimeofday(&tv, NULL);
-        return tv.tv_sec*1000 + tv.tv_usec/1000;
-#elif defined _WIN32
-        return GetTickCount();
-#endif
-	}
-
-    unsigned int    m_startMsecs;
-    CAccumulator&   m_accumulator;
-};
-#endif //_TIMERS
-
-class CFileSmartPtr
-{
-public:
-    CFileSmartPtr() : m_pFile(NULL) {}
-    ~CFileSmartPtr() { this->Close(); }
-    
-    void Attach(FILE* pFile) { this->Close(); }
-    
-    FILE* Get() { return m_pFile; }
-    
-private:
-    void Close()
-    {
-        if (m_pFile)
-        {
-            fclose(m_pFile);
-            m_pFile = NULL;
-        }
-    }
-    
-    FILE*   m_pFile;
-};
 
 namespace
 {
-	SWorkingSet active;
-	SWorkingSet candidate;
-	SWorkingSet master;
-	SWorkingSet blank;
+	SWorkingSet active;     //The current attempt of value assignments
+	SWorkingSet candidate;  //The best assignments since the last reset
+	SWorkingSet master;     //The best assignments ever
+	SWorkingSet blank;      //The question, after initial confidence and unique constraints are counted
 	
-	uint8_t question[9][9];
+	uint8_t question[9][9]; //The question, before initial calculations (kept for multiple iterations)
 	
-    bool    g_bColor = false;
-    FILE*   g_pOutputFile = NULL;
+    bool    g_bColor = false;       //Print in colors :) -- do not enable if output will be fed to a checker
+    FILE*   g_pOutputFile = NULL;   //Output file path
 	
 #ifdef _TIMERS
     CAccumulator pickPosAcc("PickPosition()");
@@ -180,7 +106,7 @@ inline void PrintEx(const char* format, ...)
 #define possibleEmptyCellsCnt   active.m_possibleEmptyCellsCnt
 #define possibleEmptyCells      active.m_possibleEmptyCells
 
-//active --> master
+//candidate --> master
 inline void Commit()
 {
     memcpy(&master, &candidate, sizeof(SWorkingSet));
@@ -216,6 +142,17 @@ void PrintSolution()
     }
 }
 
+/**
+ * Picks a number to be assigned to cell at (r, c).
+ * The number is chosen by:
+ * - For each number, see who owns the number in the neighborhood of (r, c) with the highest confidence
+ * - Pick the numbers with the lowest maximum confidence in the neighbourhood
+ * - If there are multiple such number, randomly pick one of them
+ *
+ * \param   r   row
+ * \param   c   column
+ * \return  the picked number
+ */
 uint8_t PickNum(uint8_t r, uint8_t c)
 {
 #ifdef _TIMERS
@@ -279,12 +216,28 @@ uint8_t PickNum(uint8_t r, uint8_t c)
     return candidates[rand() % candidatesCnt] + 1;
 }
 
+/**
+ * Picks a cell to be assigned a value.
+ * The cell is chosen by:
+ * - Find the cell with the lowest confidence.
+ *   But we observe that most of the time the lowest confidence is zero.
+ *   So if there is still a cell with zero confidence, we use the list of possibly empty cells.
+ * - Among the cells with lowest confidence, find the one with the highest count of unique constraints
+ * - If there are still multiple such cells, pick one randomly
+ * If this function doesn't find a cell with imperfect confidence, it will return false.
+ *
+ * \param   out_r   Selected cell's row
+ * \param   out_c   Selected cell's column
+ * \return  true if a cell with imperfect confidence has been chosen, false if all cells have perfect confidence
+ */
 bool PickPosition(uint8_t& out_r, uint8_t& out_c)
 {
 #ifdef _TIMERS
 	CTimer t(pickPosAcc);
 #endif
 	
+	//If there are still empty cells, look for them in the list of possibly empty cells
+	//We don't maintain the exact list of empty cells because doing so would be expensive
 	if (emptyCellsCnt)
 	{
 	    SPos candidates2[81];
@@ -294,7 +247,7 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
         for (uint8_t i=0; i<possibleEmptyCellsCnt; ++i)
         {
             uint8_t ir = possibleEmptyCells[i].r, ic= possibleEmptyCells[i].c;
-            if (!val[ir][ic] && (cc[ir][ic] > maxCC))
+            if (!val[ir][ic] && (cc[ir][ic] > maxCC)) //!val[ir][ic] --> only consider the cell if it's empty
                 candidates2Cnt=0;
             if (!val[ir][ic] && (cc[ir][ic] >= maxCC))
             {
@@ -310,13 +263,11 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
             return true;
         }
 
-    	//Rule 3: tie-breaker. No more rules! Just pick someone randomly.
-
         uint8_t lucky = rand() % candidates2Cnt;
         out_r = candidates2[lucky].r;
         out_c = candidates2[lucky].c;
         return true;
-	}
+	} //Sorry for the code repetition~
 	
 	//Rule 1: Pick a cell with the lowest confidence
 
@@ -387,6 +338,16 @@ bool PickPosition(uint8_t& out_r, uint8_t& out_c)
 #define SET_CONF(r, c, n) totalConf -= conf[r][c]; conf[r][c] = n; totalConf += n;
 #define SET_CONF_INFINITE(r, c) totalConf -= conf[r][c]; conf[r][c] = kInfiniteConf; totalConf += kMaxConf;
 
+/**
+ * DP implementation to update cell confidences when an assignment is made
+ * This function is called before the assignment is made
+ *
+ * \param   r       changed cell's row
+ * \param   c       changed cell's column
+ * \param   newVal  new value of changed cell
+ * \param   r2      affected cell's row
+ * \param   c2      affected cell's column
+ */
 inline void UpdateCellConf(uint8_t r, uint8_t c, uint8_t newVal, uint8_t r2, uint8_t c2)
 {
     if (!val[r2][c2])
@@ -410,9 +371,19 @@ inline void UpdateCellConf(uint8_t r, uint8_t c, uint8_t newVal, uint8_t r2, uin
     }
 }
 
+/**
+ * DP implementation to update cell constraints when an assignment is made
+ * This function is called before the assignment is made
+ *
+ * \param   r       changed cell's row
+ * \param   c       changed cell's column
+ * \param   newVal  new value of changed cell
+ * \param   r2      affected cell's row
+ * \param   c2      affected cell's column
+ */
 inline void UpdateCellConstraintMap(uint8_t r, uint8_t c, uint8_t newVal, uint8_t r2, uint8_t c2)
 {
-    if (val[r][c])
+    if (val[r][c]) //cell used to have a value
     {
         --constraintMap[r2][c2][(val[r][c]-1)];
         if (!constraintMap[r2][c2][(val[r][c]-1)])
@@ -427,6 +398,16 @@ inline void UpdateCellConstraintMap(uint8_t r, uint8_t c, uint8_t newVal, uint8_
     }
 }
 
+/**
+ * Visits affected cells when an assignment is made
+ * This function is called before the assignment is made
+ *
+ * \param   r       changed cell's row
+ * \param   c       changed cell's column
+ * \param   newVal  new value of changed cell
+ * \param   r2      affected cell's row
+ * \param   c2      affected cell's column
+ */
 inline void VisitCell(uint8_t r, uint8_t c, uint8_t newVal, uint8_t r2, uint8_t c2)
 {
     if (r2 == r && c2 == c)
@@ -441,6 +422,9 @@ void MakeAssignment(uint8_t r, uint8_t c, uint8_t newVal, bool initial=false)
     if ((val[r][c] == newVal) && !initial) return;
     
     SET_CONF(r, c, newVal?1:0);
+    
+    //These loops could have been unfolded with Template Metaprogramming!
+    //No time~
     
     //Row
     for (uint8_t c2=0; c2<9; ++c2)
@@ -495,32 +479,33 @@ int Search()
     {
         if (PickPosition(next_r, next_c))
             MakeAssignment(next_r, next_c, PickNum(next_r, next_c));
-        else
-            return 1;
+        else //No imperfect cell
+            return 1; //Finished!
             
         if (totalConf >= candidate.m_totalConf)
         {
-            if (totalConf == candidate.m_totalConf)
+            if (totalConf == candidate.m_totalConf) //Allow movement with same confidence, but it is considered a stuck case
                 stuckCount++;
             else
                 stuckCount = 0;
             
-            Save();
+            Save(); //active --> candidate
         }
         else
         {
-            Restore();
+            Restore(); //candidate --> active
             stuckCount++;
         }
         
-        if (stuckCount == 9)
+        if (stuckCount == 9) //Arbitrary number, seems to work best with ~9
         {
-            if (totalConf > master.m_totalConf)
+            if (totalConf > master.m_totalConf) //If better than all time best, save (commit)
             {
-                Commit();
+                Commit(); //candidate --> master
             }
-            memcpy(&candidate, &blank, sizeof(SWorkingSet));
-            Restore();
+            //Reset
+            memcpy(&candidate, &blank, sizeof(SWorkingSet)); //blank --> candidate
+            Restore(); //candidate --> active
             stuckCount=0;
         }
     }
