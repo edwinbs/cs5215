@@ -1,10 +1,12 @@
 #include "nonogram.h"
 
 #include <cstring>
+#include <map>
 
 using namespace std;
 
 
+#define MY_ASSERT(expr) if (!(expr)) { printf("ASSERTION FAILED: %s\n", #expr); throw -1; }
 
 void DebugPrint(const char* szComment,
     const std::vector<unsigned int>& vecConst,
@@ -41,6 +43,8 @@ inline bool Assign(Cell& cell, TriState newVal, bool bRow, unsigned int binding)
 
     if (cell.val != newVal)
     {
+        MY_ASSERT(cell.val == ts_dontknow);
+        
         cell.val = newVal;
         return true;
     }
@@ -48,47 +52,64 @@ inline bool Assign(Cell& cell, TriState newVal, bool bRow, unsigned int binding)
     return false;
 }
 
+void GeneralizedSimpleBoxes(const vector<Constraint>& vecConst,
+    vector<Cell>& vecCells,
+    vector<bool>& vecChanged,
+    bool& bSelfChanged,
+    bool bRow,
+    const Range& rangeToUse)
+{
+    size_t len=rangeToUse.end - rangeToUse.start + 1;
+    unsigned int tmp[len];
+    memset(tmp, 0, len * sizeof(unsigned int));
+    
+    unsigned int totalLen = vecConst.size()-1;//blank spaces
+    unsigned int j=0;
+    for (vector<Constraint>::const_iterator it=vecConst.begin();
+         it != vecConst.end(); ++it)
+    {
+        for (size_t k=0; k < it->clue; ++k)
+            tmp[j++] = it->index;
+               
+        totalLen += it->clue;
+        ++j;
+    }
+    
+    j=len-totalLen;
+    for (vector<Constraint>::const_iterator it=vecConst.begin();
+         it != vecConst.end(); ++it)
+    {
+        for (size_t k=0; k<it->clue; ++k)
+        {
+            if (tmp[j] && tmp[j] == it->index)
+            {
+                if (Assign(vecCells[j+rangeToUse.start], ts_true, bRow, it->index))
+                {
+                    vecChanged[j+rangeToUse.start] = true;
+                    bSelfChanged = true;
+                }
+            }
+            ++j;
+        }
+        ++j;
+    }
+}   
+
 void SimpleBoxes(const vector<unsigned int>& vecConst,
     vector<Cell>& vecCells,
     vector<bool>& vecChanged,
     bool& bSelfChanged,
     bool bRow)
 {
-    unsigned int tmp[vecCells.size()];
-    memset(tmp, 0, vecCells.size() * sizeof(unsigned int));
-    
-    unsigned int totalLen = vecConst.size()-1;//blank spaces
-
-    unsigned int i=1, j=0;
-    for (vector<unsigned int>::const_iterator it=vecConst.begin();
-         it != vecConst.end(); ++it)
+    vector<Constraint> tmpVecConst;
+    size_t i=1;
+    for (vector<unsigned int>::const_iterator it=vecConst.begin(); it!=vecConst.end(); ++it)
     {
-        for (size_t k=0; k<*it; ++k)
-            tmp[j++] = i;
-            
-        totalLen += *it;
-        ++i; ++j;
+        tmpVecConst.push_back(Constraint(*it, i));
+        ++i;
     }
     
-    i=1; j=vecCells.size()-totalLen;
-    
-    for (vector<unsigned int>::const_iterator it=vecConst.begin();
-         it != vecConst.end(); ++it)
-    {
-        for (size_t k=0; k<*it; ++k)
-        {
-            if (tmp[j] && tmp[j] == i)
-            {
-                if (Assign(vecCells[j], ts_true, bRow, i))
-                {
-                    vecChanged[j] = true;
-                    bSelfChanged = true;
-                }
-            }
-            ++j;
-        }
-        ++i; ++j;
-    }
+    GeneralizedSimpleBoxes(tmpVecConst, vecCells, vecChanged, bSelfChanged, bRow, Range(0, vecCells.size()-1));
     
     DebugPrint("SimpleBoxes", vecConst, vecCells, bRow);
 }
@@ -109,12 +130,6 @@ void SimpleSpaces(const vector<unsigned int>& vecConst,
     for (vector<Cell>::iterator it = vecCells.begin();
          it != vecCells.end(); ++it)
     {
-        /*for (size_t j=0; j<vecCells.size(); ++j)
-        {
-            printf("%d ", tmp[j]);
-        }
-        printf("\n");*/
-        
         if (it->val != ts_true)
         {
             ++i;
@@ -137,8 +152,6 @@ void SimpleSpaces(const vector<unsigned int>& vecConst,
             int last = i + (vecConst[clue-1] - 1);
             last = min((int) vecCells.size(), last);
             
-            //printf("i=%d first=%d last=%d const=%d\n", i, first, last, vecConst[clue-1]);
-            
             for (int j=first; j<=last; ++j)
             {
                 tmp[j] = true;
@@ -160,7 +173,6 @@ void SimpleSpaces(const vector<unsigned int>& vecConst,
         
     for (size_t j=0; j<vecCells.size(); ++j)
     {
-        //printf("%d ", tmp[j]);
         if (!tmp[j])
         {
             if (Assign(vecCells[j], ts_false, bRow, 0))
@@ -170,7 +182,6 @@ void SimpleSpaces(const vector<unsigned int>& vecConst,
             }
         }
     }
-    //printf("\n");
     
     DebugPrint("SimpleSpaces", vecConst, vecCells, bRow);
 }
@@ -228,11 +239,195 @@ void Associator(const vector<unsigned int>& vecConst,
     DebugPrint("Associator", vecConst, vecCells, bRow);
 }
 
-void Glue(const vector<unsigned int>& vecConst,
+///// FORCING ///////////
+
+void MapRanges(const vector<Cell>& vecCells, vector<Range>& vecRanges)
+{
+    size_t curStart=0, i=0;
+    bool   bInRange=false;
+    for (vector<Cell>::const_iterator it = vecCells.begin();
+         it != vecCells.end(); ++it)
+    {
+        if (it->val != ts_false)
+        {
+            if (!bInRange)
+            {
+                curStart = i;
+                bInRange = true;
+            }
+        }
+        else if (bInRange)
+        {
+            vecRanges.push_back(Range(curStart, i-1));
+            bInRange = false;
+        }
+        ++i;
+    }
+    
+    if (bInRange)
+    {
+        vecRanges.push_back(Range(curStart, i-1));
+        bInRange = false;
+    } 
+}
+
+bool EvaluateMapping(const map<unsigned int, Range>& mapBlocks,
+                     const vector<Range>& vecRanges,
+                     const vector<unsigned int>& vecConst)
+{
+    map<Range, int> mapRemaining;
+    for (vector<Range>::const_iterator it=vecRanges.begin(); it!=vecRanges.end(); ++it)
+        mapRemaining[*it] = (it->end - it->start) + 1;
+    
+    for (map<unsigned int, Range>::const_iterator it=mapBlocks.begin(); it!=mapBlocks.end(); ++it)
+    {
+        int rem = mapRemaining[it->second] - vecConst[it->first];
+        mapRemaining[it->second] = rem;
+        
+        if (rem < 0)
+            return false;
+    }
+    
+    return true;
+}
+
+void ReverseMapping(const map<unsigned int, Range>& mapBlocks,
+                    const vector<unsigned int>& vecConst,
+                    map<Range, vector<Constraint> >& goodMap)
+{
+    for (map<unsigned int, Range>::const_iterator it=mapBlocks.begin(); it!=mapBlocks.end(); ++it)
+    {
+        goodMap[it->second].push_back(Constraint(vecConst[it->first], it->first + 1));
+    }
+}
+
+void MappingSearch(const vector<unsigned int>& vecConst,
+                   const vector<Range>& vecRanges,
+                   const size_t nextConst,
+                   map<unsigned int, Range>& mapBlocks,
+                   map<Range, vector<Constraint> >& goodMap,
+                   size_t& nMapsFound)
+{
+    for (vector<Range>::const_iterator rit = vecRanges.begin(); rit != vecRanges.end(); ++rit)
+    {
+        mapBlocks[nextConst] = *rit;
+        if (nextConst < vecConst.size()-1)
+            MappingSearch(vecConst, vecRanges, nextConst+1, mapBlocks, goodMap, nMapsFound);
+        else
+        {
+            if (EvaluateMapping(mapBlocks, vecRanges, vecConst))
+            {
+                ReverseMapping(mapBlocks, vecConst, goodMap);
+                nMapsFound++;
+            }
+        }
+    }
+}
+
+void Forcing(const vector<unsigned int>& vecConst,
     vector<Cell>& vecCells,
     vector<bool>& vecChanged,
     bool& bSelfChanged,
     bool bRow)
 {
+    //Build usable ranges that are not marked as spaces
+    vector<Range> vecRanges;
+    MapRanges(vecCells, vecRanges);
+    
+    //Try to find a unique mapping of blocks to ranges
+    map<unsigned int, Range> mapBlocks;
+    map<Range, vector<Constraint> > goodMap;
+    size_t nMapsFound = 0;
+    MappingSearch(vecConst, vecRanges, 0, mapBlocks, goodMap, nMapsFound);
+    
+    if (nMapsFound == 1)
+    {
+        for (map<Range, vector<Constraint> >::iterator it=goodMap.begin();
+             it != goodMap.end(); ++it)
+        {
+            GeneralizedSimpleBoxes(it->second, vecCells, vecChanged, bSelfChanged, bRow, it->first);
+        }
+    }
+    
+    //Fill unusable ranges with spaces
+    //TODO: if there is a unique mapping, and there is an unused range, fill it with spaces
+    for (vector<Range>::iterator it1=vecRanges.begin(); it1 != vecRanges.end(); ++it1)
+    {
+        bool usable = false;
+        size_t length = (it1->end - it1->start) + 1;
+        for (vector<unsigned int>::const_iterator it2=vecConst.begin(); it2!=vecConst.end(); ++it2)
+        {
+            if (*it2 <= length)
+            {
+                usable = true;
+                break;
+            }
+        }
+        
+        if (!usable)
+        {
+            for (size_t j=it1->start; j<=it1->end; ++j)
+            {
+                if (Assign(vecCells[j], ts_false, bRow, 0))
+                {
+                    vecChanged[j] = true;
+                    bSelfChanged = true;
+                }
+            }
+        }
+    }
+    
+    DebugPrint("Forcing", vecConst, vecCells, bRow);
+}
+
+///// FORCING -- END ///////////
+
+void Punctuating(const vector<unsigned int>& vecConst,
+    vector<Cell>& vecCells,
+    vector<bool>& vecChanged,
+    bool& bSelfChanged,
+    bool bRow)
+{
+    bool bInBlock=false;
+    int last=-1;
+    size_t count=0, constIndex=0;
+    
+    for (size_t cur=0; cur<=vecCells.size(); ++cur)
+    {
+        if ((cur==vecCells.size() || vecCells[cur].val != ts_true) && bInBlock)
+        {
+            if (constIndex && count == vecConst[constIndex-1])
+            {
+                //Punctuate!
+                if (last >= 0)
+                {
+                    if (Assign(vecCells[last], ts_false, bRow, 0))
+                    {
+                        vecChanged[last] = true;
+                        bSelfChanged = true;
+                    }
+                }
+                if (cur<vecCells.size() && Assign(vecCells[cur], ts_false, bRow, 0))
+                {
+                    vecChanged[cur] = true;
+                    bSelfChanged = true;
+                }
+            }
+            bInBlock = false;
+            count = 0;
+        }
+        else
+        {
+            if (!bInBlock)
+            {
+                last = cur-1;
+                bInBlock = true;
+                constIndex = bRow ? vecCells[cur].rowClue : vecCells[cur].colClue;
+            }
+            ++count;
+        }
+    }
+    
+    DebugPrint("Punctuating", vecConst, vecCells, bRow);
 }
 

@@ -146,7 +146,8 @@ void ReduceImpl(const vector<unsigned int>& vecConst,
     Associator(vecConst, vecCells, vecChanged, bSelfChanged, bRow);
     SimpleBoxes(vecConst, vecCells, vecChanged, bSelfChanged, bRow);
     SimpleSpaces(vecConst, vecCells, vecChanged, bSelfChanged, bRow);
-    Glue(vecConst, vecCells, vecChanged, bSelfChanged, bRow);
+    Forcing(vecConst, vecCells, vecChanged, bSelfChanged, bRow);
+    Punctuating(vecConst, vecCells, vecChanged, bSelfChanged, bRow);
 }
 
 void Reduce(size_t i, bool* pDirty)
