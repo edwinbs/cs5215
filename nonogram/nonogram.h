@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <vector>
 #include <stdio.h>
+#include <map>
 
 
 typedef enum
@@ -49,37 +50,65 @@ typedef struct _Range
     bool operator < (const _Range& compare) const { return start < compare.start; }
 } Range;
 
-void DebugPrint(const char* szComment,
-    const std::vector<unsigned int>& vecConst,
-    std::vector<Cell>& vecCells,
-    bool bRow);
+class CInferenceEngine
+{
+public:
+    CInferenceEngine(std::vector<unsigned int>& vecConst,
+        std::vector<Cell>& vecCells,
+        bool bRow)
+    : m_vecConst(vecConst)
+    , m_vecCells(vecCells)
+    , m_bRow(bRow)
+    , m_bSelfChanged(false)
+    {
+        m_vecChanged.resize(vecCells.size());
+    };
 
-void SimpleBoxes(const std::vector<unsigned int>& vecConst,
-    std::vector<Cell>& vecCells,
-    std::vector<bool>& vecChanged,
-    bool& bSelfChanged,
-    bool bRow);
+    void Infer();
     
-void SimpleSpaces(const std::vector<unsigned int>& vecConst,
-    std::vector<Cell>& vecCells,
-    std::vector<bool>& vecChanged,
-    bool& bSelfChanged,
-    bool bRow);
+    bool IsSelfChanged() { return m_bSelfChanged; }
     
-void Associator(const std::vector<unsigned int>& vecConst,
-    std::vector<Cell>& vecCells,
-    std::vector<bool>& vecChanged,
-    bool& bSelfChanged,
-    bool bRow);
+    std::vector<bool>& GetChangeList() { return m_vecChanged; }
+
+private:
+    void DebugPrint(const char* szComment);
     
-void Forcing(const std::vector<unsigned int>& vecConst,
-    std::vector<Cell>& vecCells,
-    std::vector<bool>& vecChanged,
-    bool& bSelfChanged,
-    bool bRow);
+    bool Assign(Cell& cell, TriState newVal, unsigned int binding);
+
+    void SimpleBoxes();
     
-void Punctuating(const std::vector<unsigned int>& vecConst,
-    std::vector<Cell>& vecCells,
-    std::vector<bool>& vecChanged,
-    bool& bSelfChanged,
-    bool bRow);
+    void Associator();
+        
+    void SimpleSpaces();
+        
+    void Forcing();
+        
+    void Punctuating();
+    
+    void GeneralizedSimpleBoxes(const std::vector<Constraint>& vecConst,
+        const Range& rangeToUse);
+    
+    std::vector<unsigned int>&  m_vecConst;
+    std::vector<Cell>&          m_vecCells;
+    std::vector<bool>           m_vecChanged;
+    bool                        m_bSelfChanged;
+    bool                        m_bRow;
+};
+
+class CForcingHelper
+{
+public:
+    static void MapRanges(const std::vector<Cell>& vecCells,
+        std::vector<Range>& vecRanges);
+    
+    static bool EvaluateMapping(const std::map<unsigned int, Range>& mapBlocks,
+        const std::vector<Range>& vecRanges,
+        const std::vector<unsigned int>& vecConst);
+        
+    static void MappingSearch(const std::vector<unsigned int>& vecConst,
+        const std::vector<Range>& vecRanges,
+        const size_t nextConst,
+        std::map<unsigned int, Range>& mapBlocks,
+        std::map<Range, std::vector<Constraint> >& goodMap,
+        size_t& nMapsFound);
+};
