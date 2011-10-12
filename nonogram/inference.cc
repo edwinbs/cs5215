@@ -51,15 +51,25 @@ inline bool CInferenceEngine::Assign(Cell& cell, TriState newVal, unsigned int b
     return false;
 }
 
-void CInferenceEngine::Infer()
+int CInferenceEngine::Infer()
 {
     DebugPrint("Infer");
     
-    SimpleBoxes();
-    Associator();
-    SimpleSpaces();
-    Forcing();
-    Punctuating();
+    try
+    {
+        SimpleBoxes();
+        Associator();
+        SimpleSpaces();
+        Forcing();
+        Punctuating();
+        CheckCompletedLine();
+        
+        return 0;
+    }
+    catch (...)
+    {
+        return -1;
+    }
 }
 
 void CInferenceEngine::GeneralizedSimpleBoxes(const vector<Constraint>& vecConst,
@@ -317,6 +327,12 @@ void CInferenceEngine::Forcing()
             GeneralizedSimpleBoxes(it->second, it->first);
         }
     }
+    else if (nMapsFound == 0)
+    {
+        //Something is really screwed up
+        printf("[%s] CONTRADICTION\n", __FUNCTION__);
+        throw -1;
+    }
     
     //Fill unusable ranges with spaces
     //TODO: if there is a unique mapping, and there is an unused range, fill it with spaces
@@ -381,5 +397,62 @@ void CInferenceEngine::Punctuating()
     }
     
     DebugPrint("Punctuating");
+}
+
+void CInferenceEngine::CheckCompletedLine()
+{
+    for (vector<Cell>::const_iterator it=m_vecCells.begin(); it!=m_vecCells.end(); ++it)
+    {
+        if (it->val == ts_dontknow)
+            return;
+    }
+        
+    bool bInBlock = false;
+    vector<unsigned int>::const_iterator it1 = m_vecConst.begin();
+    unsigned int curConst = *it1;
+    
+    for (vector<Cell>::const_iterator it2 = m_vecCells.begin(); it2!=m_vecCells.end(); ++it2)
+    {
+        if (it2->val == ts_true)
+        {
+            if (curConst-- == 0)
+            {
+                printf("[CInferenceEngine::CheckCompletedLine] Contradiction 1\n");
+                throw -1;
+            }
+            bInBlock = true;
+        }
+        else if (it2->val == ts_false && bInBlock)
+        {
+            ++it1;
+            if (it1 != m_vecConst.end())
+                curConst = *it1;
+            bInBlock = false;
+        }
+    }
+    
+    if (bInBlock) ++it1;
+    
+    if (curConst != 0 || it1 != m_vecConst.end())
+    {
+    
+        printf("[%s] [%s] const=[", "CONTRADICTION_2", m_bRow?"row":"col");
+        for (std::vector<unsigned int>::const_iterator it=m_vecConst.begin();
+             it !=m_vecConst.end(); ++it)
+        {
+            printf("%d ", *it);
+        }
+        
+        printf("] cells=[");
+        for (std::vector<Cell>::const_iterator it= m_vecCells.begin();
+             it != m_vecCells.end(); ++it)
+        {
+            printf("%c%d%d ", it->val, it->rowClue, it->colClue);
+        }
+        printf("]\n");
+        
+        printf("[CInferenceEngine::CheckCompletedLine] Contradiction 2 curConst=[%d] end?[%d]\n", curConst, (it1 == m_vecConst.end())?1:0);
+        throw -1;
+    }
 }
 

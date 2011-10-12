@@ -105,7 +105,7 @@ int ReadFile(const char* filename)
     return 0;
 }
 
-void Reduce(size_t i, bool* pDirty)
+int Reduce(size_t i, bool* pDirty)
 {
     pDirty[i]=false;
     
@@ -128,7 +128,7 @@ void Reduce(size_t i, bool* pDirty)
     }
     
     CInferenceEngine ie(*pVecConst, vecCells, bRow);
-    ie.Infer();
+    int nRet = ie.Infer();
     pDirty[i] = ie.IsSelfChanged();
     vector<bool>& vecChanged = ie.GetChangeList();
     
@@ -148,6 +148,19 @@ void Reduce(size_t i, bool* pDirty)
             pCells[POS(j,i-nRowCnt)] = vecCells[j];
         }
     }
+    
+    return nRet;
+}
+
+bool IsSolved()
+{
+    const size_t nTotalCnt = nRowCnt * nColCnt;
+    for (size_t i=0; i<nTotalCnt; ++i)
+    {
+        if (pCells[i].val == ts_dontknow)
+            return false;
+    }
+    return true;
 }
 
 int Solve()
@@ -164,13 +177,105 @@ int Solve()
         {
             if (pDirty[i])
             {
-                Reduce(i, pDirty);
+                if (Reduce(i, pDirty) == -1)
+                    return -1;
+                    
+                if (IsSolved())
+                    return 1;
+                    
                 break;
             }
         }
         if (i == nTotalCnt)
             return 0;
     }
+    return 0;
+}
+
+int next_undecided_after(int n)
+{
+    const int nTotalCnt = nRowCnt * nColCnt;
+    for (int i=n+1; i<nTotalCnt; ++i)
+    {
+        if (pCells[i].val == ts_dontknow)
+            return i;
+    }
+    return -1;
+}
+
+inline void stack_push(vector< vector<Cell> >& stack, const Cell* pCells, size_t len)
+{
+    vector<Cell> tmp;
+    for (size_t i=0; i<len; ++i)
+        tmp.push_back(pCells[i]);
+        
+    stack.push_back(tmp);
+}
+
+inline void stack_pop(vector< vector<Cell> >& stack, Cell* pCells, size_t len)
+{
+    vector<Cell> tmp = stack.back();
+    stack.pop_back();
+    
+    for (size_t i=0; i<len; ++i)
+        pCells[i] = tmp[i];
+}
+
+int SolveWithContradictions()
+{
+    const int nTotalCnt = nRowCnt * nColCnt;
+    int ngi = -1; //next guess index
+    //vector< vector<Cell> > inverseGuessStack;
+    
+    vector<Cell> inverse;
+    vector<Cell> original;
+
+    while (true)
+    {
+        int nRet = Solve();
+        if (nRet == -1)
+        {
+            printf("CONTRADICTION\n");
+            for (size_t i=0; i<nTotalCnt; ++i)
+                pCells[i] = inverse[i];
+                
+            original.clear();
+            continue;
+        }
+        else if (nRet == 1)
+        {
+            printf("DONE\n");
+            return 1; //good
+        }
+        
+        //then nRet == 0 (GIVE_UP)
+        printf("GIVE UP\n");
+        if (original.size() != 0)
+        {
+            printf("RESTORING ORIGINAL\n");
+            for (size_t i=0; i<nTotalCnt; ++i)
+                pCells[i] = original[i];
+        }
+        
+        ngi = next_undecided_after(ngi);
+        printf("GUESSING [%d]\n", ngi);
+        if (ngi == -1)
+            return 0; //bad
+
+        original.clear();
+        for (size_t i=0; i<nTotalCnt; ++i)
+            original.push_back(pCells[i]);
+
+        pCells[ngi].val = ts_true;
+        
+        inverse.clear();
+        for (size_t i=0; i<nTotalCnt; ++i)
+            inverse.push_back(pCells[i]);
+        
+        //stack_push(inverseGuessStack, pCells, nTotalCnt);
+        pCells[ngi].val = ts_false;
+    }
+    
     return 0;
 }
 
@@ -185,7 +290,7 @@ int main(int argc, char** argv)
     if (ReadFile(argv[1]) != 0)
         return EXIT_FAILURE;
         
-    Solve();
+    SolveWithContradictions();
     PrintCells();
     
     return 0;

@@ -64,7 +64,7 @@ public:
         m_vecChanged.resize(vecCells.size());
     };
 
-    void Infer();
+    int Infer();
     
     bool IsSelfChanged() { return m_bSelfChanged; }
     
@@ -84,6 +84,8 @@ private:
     void Forcing();
         
     void Punctuating();
+    
+    void CheckCompletedLine();
     
     void GeneralizedSimpleBoxes(const std::vector<Constraint>& vecConst,
         const Range& rangeToUse);
