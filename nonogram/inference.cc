@@ -6,7 +6,7 @@
 using namespace std;
 
 
-#define MY_ASSERT(expr) if (!(expr)) { printf("ASSERTION FAILED: %s\n", #expr); throw -1; }
+#define MY_ASSERT(expr) if (!(expr)) { throw -1; }
 
 #define OR(x,y) x = (y) | x
 
@@ -57,11 +57,9 @@ int CInferenceEngine::Infer()
     
     try
     {
-        SimpleBoxes();
-        Associator();
-        SimpleSpaces();
         Forcing();
         Punctuating();
+        Omniscient();
         CheckCompletedLine();
         
         return 0;
@@ -107,118 +105,6 @@ void CInferenceEngine::GeneralizedSimpleBoxes(const vector<Constraint>& vecConst
         }
         ++i;
     }
-}   
-
-void CInferenceEngine::SimpleBoxes()
-{
-    vector<Constraint> tmpVecConst;
-    for (size_t i=0; i<m_vecConst.size(); ++i)
-        tmpVecConst.push_back(Constraint(m_vecConst[i], i+1));
-    
-    GeneralizedSimpleBoxes(tmpVecConst, Range(0, m_vecCells.size()-1));
-    DebugPrint("SimpleBoxes");
-}
-
-void CInferenceEngine::SimpleSpaces()
-{
-    bool tmp[m_vecCells.size()];
-    memset(tmp, 0, m_vecCells.size() * sizeof(bool));
-    
-    size_t lastTrue = 0;
-    size_t nextExpectedClue = 1;
-    
-    for (size_t i=0; i<m_vecCells.size(); ++i)
-    {
-        if (m_vecCells[i].val != ts_true)
-            continue;
-        
-        size_t clue = m_bRow ? m_vecCells[i].rowClue : m_vecCells[i].colClue;
-        
-        if (clue == 0 || clue > nextExpectedClue)
-        {
-            for (; lastTrue <= i; ++lastTrue)
-                tmp[lastTrue] = true;
-        }
-        
-        if (clue != 0)
-        {
-            int first = i - (m_vecConst[clue-1] - 1);
-            first = max(0, first);
-            
-            int last = i + (m_vecConst[clue-1] - 1);
-            last = min((int) m_vecCells.size(), last);
-            lastTrue = last+1;
-            
-            for (int j=first; j<=last; ++j)
-                tmp[j] = true;
-            
-            if (clue == nextExpectedClue)
-                ++nextExpectedClue;
-        }
-    }
-    
-    if (nextExpectedClue <= m_vecConst.size())
-    {
-        for (; lastTrue < m_vecCells.size(); ++lastTrue)
-            tmp[lastTrue] = true;
-    }
-        
-    for (size_t j=0; j<m_vecCells.size(); ++j)
-    {
-        if (!tmp[j])
-            OR(m_vecChanged[j], Assign(m_vecCells[j], ts_false, 0));
-    }
-    
-    DebugPrint("SimpleSpaces");
-}
-
-void CInferenceEngine::Associator()
-{
-    unsigned int draft[m_vecCells.size()];
-    memset(draft, 0, m_vecCells.size() * sizeof(unsigned int));
-    
-    bool bad=false;
-    unsigned int current=1, currentCnt=0, i=0, last=0;
-    for (vector<Cell>::const_iterator it=m_vecCells.begin();
-         it != m_vecCells.end(); ++it)
-    {
-        if (it->val == ts_true)
-        {
-            draft[i] = current;
-            currentCnt++;
-            last = current;
-        }
-        else if (currentCnt > 0)
-        {
-            if (currentCnt > m_vecConst[current-1])
-            {
-                bad=true;
-                break;
-            }
-            current++;
-            currentCnt=0;
-        }
-        ++i;
-    }
-    
-    if (!bad && last==m_vecConst.size())
-    {
-        for (size_t j=0; j<m_vecCells.size(); ++j)
-        {
-            if (m_bRow && !m_vecCells[j].rowClue && draft[j])
-            {
-                m_vecCells[j].rowClue = draft[j];
-                m_bSelfChanged = true;
-            }
-            else if (!m_bRow && !m_vecCells[j].colClue && draft[j])
-            {
-                m_vecCells[j].colClue = draft[j];
-                m_bSelfChanged = true;
-            }
-        }
-    }
-    
-    DebugPrint("Associator");
 }
 
 ///// FORCING ///////////
@@ -328,11 +214,7 @@ void CInferenceEngine::Forcing()
         }
     }
     else if (nMapsFound == 0)
-    {
-        //Something is really screwed up
-        printf("[%s] CONTRADICTION\n", __FUNCTION__);
         throw -1;
-    }
     
     //Fill unusable ranges with spaces
     //TODO: if there is a unique mapping, and there is an unused range, fill it with spaces
@@ -416,10 +298,7 @@ void CInferenceEngine::CheckCompletedLine()
         if (it2->val == ts_true)
         {
             if (curConst-- == 0)
-            {
-                printf("[CInferenceEngine::CheckCompletedLine] Contradiction 1\n");
                 throw -1;
-            }
             bInBlock = true;
         }
         else if (it2->val == ts_false && bInBlock)
@@ -434,25 +313,101 @@ void CInferenceEngine::CheckCompletedLine()
     if (bInBlock) ++it1;
     
     if (curConst != 0 || it1 != m_vecConst.end())
-    {
-    
-        printf("[%s] [%s] const=[", "CONTRADICTION_2", m_bRow?"row":"col");
-        for (std::vector<unsigned int>::const_iterator it=m_vecConst.begin();
-             it !=m_vecConst.end(); ++it)
-        {
-            printf("%d ", *it);
-        }
-        
-        printf("] cells=[");
-        for (std::vector<Cell>::const_iterator it= m_vecCells.begin();
-             it != m_vecCells.end(); ++it)
-        {
-            printf("%c%d%d ", it->val, it->rowClue, it->colClue);
-        }
-        printf("]\n");
-        
-        printf("[CInferenceEngine::CheckCompletedLine] Contradiction 2 curConst=[%d] end?[%d]\n", curConst, (it1 == m_vecConst.end())?1:0);
         throw -1;
+    
+    return;
+}
+
+void CInferenceEngine::OmniscientAccumulate(int* pos, TriState* accumulator, bool& bFirst)
+{
+    const int count = m_vecConst.size();
+
+    const int len = m_vecCells.size();
+    TriState tmp[len];
+    for (int i=0; i<len; ++i)
+        tmp[i] = ts_false;
+    
+    for (int i=0; i<count; ++i)
+    {
+        for (int j=0; j<m_vecConst[i]; ++j)
+            tmp[pos[i] + j] = ts_true;
     }
+    
+    for (int i=0; i<len; ++i)
+    {
+        if (bFirst)
+            accumulator[i] = tmp[i];
+        else if (accumulator[i] != tmp[i])
+            accumulator[i] = ts_dontknow;
+    }
+    
+    bFirst = false;
+}
+
+void CInferenceEngine::OmniscientImpl(int b, int* pos, TriState* accumulator, bool& bFirst)
+{
+    if (b == m_vecConst.size())
+    {
+        OmniscientAccumulate(pos, accumulator, bFirst);
+        return;
+    }
+    
+    int start = (b == 0) ? 0 : pos[b-1] + m_vecConst[b-1] + 1;
+    int prevSpaceStart = (b == 0) ? 0 : pos[b-1] + m_vecConst[b-1];
+    
+    const int len = m_vecCells.size();
+    for (int i=start; i<len; ++i)
+    {
+        pos[b] = i;
+        
+        bool bCovering = false;
+        for (int j=i; j<i+m_vecConst[b]; ++j)
+        {
+            if (m_vecCells[j].val == ts_false)
+            {
+                //printf("block %d starting at %d covers %d\n", b, i, j);
+                bCovering = true;
+                break;
+            }
+        }
+        if (bCovering) continue;
+        
+        bool bUncovering = false;
+        for (int j=prevSpaceStart; j<i; ++j)
+        {
+            if (m_vecCells[j].val == ts_true)
+            {
+                //printf("block %d starting at %d uncovers %d\n", b, i, j);
+                bUncovering = true;
+                break;
+            }
+        }
+        if (bUncovering) continue;
+        
+        OmniscientImpl(b+1, pos, accumulator, bFirst);
+    }
+}
+
+void CInferenceEngine::Omniscient()
+{
+    const int len = m_vecConst.size();
+    int* pos = new int[len];
+    memset(pos, 0, len * sizeof(int));
+    
+    const int count = m_vecCells.size();
+    TriState* accumulator = new TriState[count];
+    for (size_t i=0; i<count; ++i)
+        accumulator[i] = ts_dontknow;
+        
+    bool bFirst = true;
+    OmniscientImpl(0, pos, accumulator, bFirst);
+    
+    for (size_t i=0; i<count; ++i)
+    {
+        if (accumulator[i] != ts_dontknow)
+            Assign(m_vecCells[i], accumulator[i], 0);
+    }
+    
+    DebugPrint("Omniscient");
 }
 

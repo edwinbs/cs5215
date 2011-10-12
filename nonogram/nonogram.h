@@ -76,10 +76,6 @@ private:
     bool Assign(Cell& cell, TriState newVal, unsigned int binding);
 
     void SimpleBoxes();
-    
-    void Associator();
-        
-    void SimpleSpaces();
         
     void Forcing();
         
@@ -89,6 +85,14 @@ private:
     
     void GeneralizedSimpleBoxes(const std::vector<Constraint>& vecConst,
         const Range& rangeToUse);
+        
+    void Omniscient();
+    
+    void OmniscientImpl(int b, int* pos, TriState* accumulator, bool& first);
+    
+    void OmniscientAccumulate(int* pos, TriState* accumulator, bool& first);
+    
+    void SuperPunctuating();
     
     std::vector<unsigned int>&  m_vecConst;
     std::vector<Cell>&          m_vecCells;

@@ -235,7 +235,7 @@ int SolveWithContradictions()
         int nRet = Solve();
         if (nRet == -1)
         {
-            printf("CONTRADICTION\n");
+            //printf("CONTRADICTION\n");
             for (size_t i=0; i<nTotalCnt; ++i)
                 pCells[i] = inverse[i];
                 
@@ -244,21 +244,21 @@ int SolveWithContradictions()
         }
         else if (nRet == 1)
         {
-            printf("DONE\n");
+            //printf("DONE\n");
             return 1; //good
         }
         
         //then nRet == 0 (GIVE_UP)
-        printf("GIVE UP\n");
+        //printf("GIVE UP\n");
         if (original.size() != 0)
         {
-            printf("RESTORING ORIGINAL\n");
+            //printf("RESTORING ORIGINAL\n");
             for (size_t i=0; i<nTotalCnt; ++i)
                 pCells[i] = original[i];
         }
         
         ngi = next_undecided_after(ngi);
-        printf("GUESSING [%d]\n", ngi);
+        //printf("GUESSING [%d]\n", ngi);
         if (ngi == -1)
             return 0; //bad
 
