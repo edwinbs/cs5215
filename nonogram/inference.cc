@@ -92,7 +92,9 @@ void CInferenceEngine::GeneralizedSimpleBoxes(const vector<Constraint>& vecConst
     }
     
     //Pass 2: Everything is crowded to the right
-    
+    if (len < totalLen)
+        return;
+        
     i = len - totalLen; //Starting offset for Pass 2
     for (vector<Constraint>::const_iterator it=vecConst.begin();
          it != vecConst.end(); ++it)
@@ -283,10 +285,14 @@ void CInferenceEngine::Punctuating()
 
 void CInferenceEngine::CheckCompletedLine()
 {
+    bool bKnownComplete = true;
+    bool bActualComplete = true;
     for (vector<Cell>::const_iterator it=m_vecCells.begin(); it!=m_vecCells.end(); ++it)
     {
         if (it->val == ts_dontknow)
-            return;
+        {
+            bKnownComplete = false;
+        }
     }
         
     bool bInBlock = false;
@@ -298,11 +304,23 @@ void CInferenceEngine::CheckCompletedLine()
         if (it2->val == ts_true)
         {
             if (curConst-- == 0)
-                throw -1;
+            {
+                if (bKnownComplete)
+                    throw -1;
+                else
+                    bActualComplete = false;
+            }
             bInBlock = true;
         }
         else if (it2->val == ts_false && bInBlock)
         {
+            if (curConst != 0)
+            {
+                if (bKnownComplete)
+                    throw -1;
+                else
+                    bActualComplete = false;
+            }
             ++it1;
             if (it1 != m_vecConst.end())
                 curConst = *it1;
@@ -313,9 +331,28 @@ void CInferenceEngine::CheckCompletedLine()
     if (bInBlock) ++it1;
     
     if (curConst != 0 || it1 != m_vecConst.end())
-        throw -1;
+    {
+        if (bKnownComplete)
+            throw -1;
+        else
+            bActualComplete = false;
+    }
+    
+    if (bActualComplete && !bKnownComplete)
+        SuperPunctuating();
     
     return;
+}
+
+void CInferenceEngine::SuperPunctuating()
+{
+    DebugPrint("SuperPunctuating-BEFORE");
+    for (vector<Cell>::iterator it = m_vecCells.begin(); it!=m_vecCells.end(); ++it)
+    {
+        if (it->val == ts_dontknow)
+            Assign(*it, ts_false, 0);
+    }
+    DebugPrint("SuperPunctuating-AFTER");
 }
 
 void CInferenceEngine::OmniscientAccumulate(int* pos, TriState* accumulator, bool& bFirst)
@@ -365,7 +402,6 @@ void CInferenceEngine::OmniscientImpl(int b, int* pos, TriState* accumulator, bo
         {
             if (m_vecCells[j].val == ts_false)
             {
-                //printf("block %d starting at %d covers %d\n", b, i, j);
                 bCovering = true;
                 break;
             }
@@ -377,7 +413,6 @@ void CInferenceEngine::OmniscientImpl(int b, int* pos, TriState* accumulator, bo
         {
             if (m_vecCells[j].val == ts_true)
             {
-                //printf("block %d starting at %d uncovers %d\n", b, i, j);
                 bUncovering = true;
                 break;
             }

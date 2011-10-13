@@ -235,7 +235,6 @@ int SolveWithContradictions()
         int nRet = Solve();
         if (nRet == -1)
         {
-            //printf("CONTRADICTION\n");
             for (size_t i=0; i<nTotalCnt; ++i)
                 pCells[i] = inverse[i];
                 
@@ -243,13 +242,8 @@ int SolveWithContradictions()
             continue;
         }
         else if (nRet == 1)
-        {
-            //printf("DONE\n");
             return 1; //good
-        }
         
-        //then nRet == 0 (GIVE_UP)
-        //printf("GIVE UP\n");
         if (original.size() != 0)
         {
             //printf("RESTORING ORIGINAL\n");
@@ -258,7 +252,6 @@ int SolveWithContradictions()
         }
         
         ngi = next_undecided_after(ngi);
-        //printf("GUESSING [%d]\n", ngi);
         if (ngi == -1)
             return 0; //bad
 
@@ -272,7 +265,6 @@ int SolveWithContradictions()
         for (size_t i=0; i<nTotalCnt; ++i)
             inverse.push_back(pCells[i]);
         
-        //stack_push(inverseGuessStack, pCells, nTotalCnt);
         pCells[ngi].val = ts_false;
     }
     
