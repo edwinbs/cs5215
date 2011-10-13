@@ -152,15 +152,15 @@ int Reduce(size_t i, bool* pDirty)
     return nRet;
 }
 
-bool IsSolved()
+int NextUndecidedAfter(int n)
 {
-    const size_t nTotalCnt = nRowCnt * nColCnt;
-    for (size_t i=0; i<nTotalCnt; ++i)
+    const int nTotalCnt = nRowCnt * nColCnt;
+    for (int i=n+1; i<nTotalCnt; ++i)
     {
         if (pCells[i].val == ts_dontknow)
-            return false;
+            return i;
     }
-    return true;
+    return -1;
 }
 
 int Solve()
@@ -180,7 +180,7 @@ int Solve()
                 if (Reduce(i, pDirty) == -1)
                     return -1;
                     
-                if (IsSolved())
+                if (NextUndecidedAfter(-1) == -1)
                     return 1;
                     
                 break;
@@ -190,17 +190,6 @@ int Solve()
             return 0;
     }
     return 0;
-}
-
-int next_undecided_after(int n)
-{
-    const int nTotalCnt = nRowCnt * nColCnt;
-    for (int i=n+1; i<nTotalCnt; ++i)
-    {
-        if (pCells[i].val == ts_dontknow)
-            return i;
-    }
-    return -1;
 }
 
 int SolveWithContradictions()
@@ -231,7 +220,7 @@ int SolveWithContradictions()
                 pCells[i] = original[i];
         }
         
-        ngi = next_undecided_after(ngi);
+        ngi = NextUndecidedAfter(ngi);
         if (ngi == -1)
             return 0; //bad
 
@@ -285,4 +274,3 @@ int main(int argc, char** argv)
     
     return 0;
 }
-
