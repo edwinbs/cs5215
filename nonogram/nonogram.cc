@@ -273,6 +273,8 @@ int SolveWithContradictions()
 
 int main(int argc, char** argv)
 {
+    bool bUseContradictions = true;
+    
     if (argc<2)
     {
         PrintInstruction();
@@ -282,7 +284,20 @@ int main(int argc, char** argv)
     if (ReadFile(argv[1]) != 0)
         return EXIT_FAILURE;
         
-    SolveWithContradictions();
+    for (size_t i=2; i<argc; ++i)
+    {
+        if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--no-contradictions") == 0)
+        {
+            printf("# Not using contradictions.\n");
+            bUseContradictions = false;
+        }
+    }
+    
+    if (bUseContradictions)
+        SolveWithContradictions();
+    else
+        Solve();
+    
     PrintCells();
     
     return 0;
