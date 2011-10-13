@@ -99,6 +99,8 @@ private:
     std::vector<bool>           m_vecChanged;
     bool                        m_bSelfChanged;
     bool                        m_bRow;
+    
+    friend class CNonogramTest;
 };
 
 class CForcingHelper

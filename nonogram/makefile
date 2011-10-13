@@ -8,5 +8,5 @@ debug:
 	g++ -o nonogram nonogram.cc inference.cc -g -D _DEBUG
 
 test:
-	g++ -o nonogramtest nonogramtest.cc inference.cc -g
+	g++ -o nonogramtest nonogramtest.cc inference.cc -g -D _DEBUG
 

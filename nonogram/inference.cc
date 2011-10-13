@@ -58,7 +58,6 @@ int CInferenceEngine::Infer()
     try
     {
         Forcing();
-        Punctuating();
         Omniscient();
         CheckCompletedLine();
         
@@ -246,54 +245,12 @@ void CInferenceEngine::Forcing()
 
 ///// FORCING -- END ///////////
 
-void CInferenceEngine::Punctuating()
-{
-    bool bInBlock=false;
-    int last=-1;
-    size_t count=0, constIndex=0;
-    
-    for (size_t cur=0; cur<=m_vecCells.size(); ++cur)
-    {
-        if ((cur==m_vecCells.size() || m_vecCells[cur].val != ts_true) && bInBlock)
-        {
-            if (constIndex && count == m_vecConst[constIndex-1])
-            {
-                //Punctuate!
-                if (last >= 0)
-                    OR(m_vecChanged[last], Assign(m_vecCells[last], ts_false, 0));
-                    
-                if (cur<m_vecCells.size())
-                    OR(m_vecChanged[cur], Assign(m_vecCells[cur], ts_false, 0));
-            }
-            bInBlock = false;
-            count = 0;
-        }
-        else
-        {
-            if (!bInBlock)
-            {
-                last = cur-1;
-                bInBlock = true;
-                constIndex = m_bRow ? m_vecCells[cur].rowClue : m_vecCells[cur].colClue;
-            }
-            ++count;
-        }
-    }
-    
-    DebugPrint("Punctuating");
-}
-
 void CInferenceEngine::CheckCompletedLine()
 {
     bool bKnownComplete = true;
     bool bActualComplete = true;
     for (vector<Cell>::const_iterator it=m_vecCells.begin(); it!=m_vecCells.end(); ++it)
-    {
-        if (it->val == ts_dontknow)
-        {
-            bKnownComplete = false;
-        }
-    }
+        if (it->val == ts_dontknow) return;
         
     bool bInBlock = false;
     vector<unsigned int>::const_iterator it1 = m_vecConst.begin();
@@ -304,23 +261,13 @@ void CInferenceEngine::CheckCompletedLine()
         if (it2->val == ts_true)
         {
             if (curConst-- == 0)
-            {
-                if (bKnownComplete)
-                    throw -1;
-                else
-                    bActualComplete = false;
-            }
+                throw -1;
             bInBlock = true;
         }
         else if (it2->val == ts_false && bInBlock)
         {
             if (curConst != 0)
-            {
-                if (bKnownComplete)
-                    throw -1;
-                else
-                    bActualComplete = false;
-            }
+                throw -1;
             ++it1;
             if (it1 != m_vecConst.end())
                 curConst = *it1;
@@ -331,35 +278,20 @@ void CInferenceEngine::CheckCompletedLine()
     if (bInBlock) ++it1;
     
     if (curConst != 0 || it1 != m_vecConst.end())
-    {
-        if (bKnownComplete)
-            throw -1;
-        else
-            bActualComplete = false;
-    }
-    
-    if (bActualComplete && !bKnownComplete)
-        SuperPunctuating();
+        throw -1;
     
     return;
-}
-
-void CInferenceEngine::SuperPunctuating()
-{
-    DebugPrint("SuperPunctuating-BEFORE");
-    for (vector<Cell>::iterator it = m_vecCells.begin(); it!=m_vecCells.end(); ++it)
-    {
-        if (it->val == ts_dontknow)
-            Assign(*it, ts_false, 0);
-    }
-    DebugPrint("SuperPunctuating-AFTER");
 }
 
 void CInferenceEngine::OmniscientAccumulate(int* pos, TriState* accumulator, bool& bFirst)
 {
     const int count = m_vecConst.size();
-
     const int len = m_vecCells.size();
+    
+    for (int i=0; i<count; ++i)
+        printf("%d ", pos[i]);
+    printf("\n");
+    
     TriState tmp[len];
     for (int i=0; i<len; ++i)
         tmp[i] = ts_false;
@@ -397,6 +329,17 @@ void CInferenceEngine::OmniscientImpl(int b, int* pos, TriState* accumulator, bo
     {
         pos[b] = i;
         
+        bool bUncovering = false;
+        for (int j=prevSpaceStart; j<i; ++j)
+        {
+            if (m_vecCells[j].val == ts_true)
+            {
+                bUncovering = true;
+                break;
+            }
+        }
+        if (bUncovering) continue;
+        
         bool bCovering = false;
         for (int j=i; j<i+m_vecConst[b]; ++j)
         {
@@ -408,16 +351,18 @@ void CInferenceEngine::OmniscientImpl(int b, int* pos, TriState* accumulator, bo
         }
         if (bCovering) continue;
         
-        bool bUncovering = false;
-        for (int j=prevSpaceStart; j<i; ++j)
+        if (b == m_vecConst.size()-1)
         {
-            if (m_vecCells[j].val == ts_true)
+            for (int j=i+m_vecConst[b]; j<m_vecCells.size(); ++j)
             {
-                bUncovering = true;
-                break;
+                if (m_vecCells[j].val == ts_true)
+                {
+                    bUncovering = true;
+                    break;
+                }
             }
+            if (bUncovering) continue;
         }
-        if (bUncovering) continue;
         
         OmniscientImpl(b+1, pos, accumulator, bFirst);
     }
