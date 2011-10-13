@@ -4,7 +4,7 @@
  * Nonogram solver (incomplete) based on constraint propagation without search.
  *
  * To build:
- * Linux/Mac OS X: g++ -o nonogram -O3 nonogram.cc
+ * Linux/Mac OS X: make
  *
  * @author  Edwin Boaz Soenaryo
  * @author  Nguyen Tat Thang
@@ -32,7 +32,10 @@ namespace
 void PrintInstruction()
 {
     printf("NONOGRAM SOLVER by Edwin and Tat Thang\n");
-    printf("Usage: nonogram <input-file>\n");
+    printf("Usage: nonogram <input-file> [options]\n");
+    printf("Options:\n");
+    printf("-s --contradictions\n");
+    printf("    Enable contradictions (see: Wikipedia)\n");
 }
 
 void PrintCells()
@@ -42,7 +45,7 @@ void PrintCells()
         size_t start=r*nColCnt, end=start+nColCnt;
         for(size_t i=start; i<end; ++i)
         {
-            printf("%c",pCells[i]);
+            printf("%c",pCells[i].val);
         }
         printf("\n");
     }
@@ -108,14 +111,11 @@ int ReadFile(const char* filename)
 int Reduce(size_t i, bool* pDirty)
 {
     pDirty[i]=false;
-    
     vector<unsigned int>* pVecConst = NULL;
     vector<Cell> vecCells;
-    bool bRow = false;
     
     if (i < nRowCnt)
     {
-        bRow = true;
         pVecConst = &(vecRowConst[i]);
         for (size_t c=0; c<nColCnt; ++c)
             vecCells.push_back(pCells[POS(i,c)]);
@@ -127,7 +127,7 @@ int Reduce(size_t i, bool* pDirty)
             vecCells.push_back(pCells[POS(r,i-nRowCnt)]);
     }
     
-    CInferenceEngine ie(*pVecConst, vecCells, bRow);
+    CInferenceEngine ie(*pVecConst, vecCells);
     int nRet = ie.Infer();
     pDirty[i] = ie.IsSelfChanged();
     vector<bool>& vecChanged = ie.GetChangeList();
@@ -203,29 +203,10 @@ int next_undecided_after(int n)
     return -1;
 }
 
-inline void stack_push(vector< vector<Cell> >& stack, const Cell* pCells, size_t len)
-{
-    vector<Cell> tmp;
-    for (size_t i=0; i<len; ++i)
-        tmp.push_back(pCells[i]);
-        
-    stack.push_back(tmp);
-}
-
-inline void stack_pop(vector< vector<Cell> >& stack, Cell* pCells, size_t len)
-{
-    vector<Cell> tmp = stack.back();
-    stack.pop_back();
-    
-    for (size_t i=0; i<len; ++i)
-        pCells[i] = tmp[i];
-}
-
 int SolveWithContradictions()
 {
     const int nTotalCnt = nRowCnt * nColCnt;
     int ngi = -1; //next guess index
-    //vector< vector<Cell> > inverseGuessStack;
     
     vector<Cell> inverse;
     vector<Cell> original;
@@ -246,7 +227,6 @@ int SolveWithContradictions()
         
         if (original.size() != 0)
         {
-            //printf("RESTORING ORIGINAL\n");
             for (size_t i=0; i<nTotalCnt; ++i)
                 pCells[i] = original[i];
         }
@@ -273,7 +253,7 @@ int SolveWithContradictions()
 
 int main(int argc, char** argv)
 {
-    bool bUseContradictions = true;
+    bool bUseContradictions = false;
     
     if (argc<2)
     {
@@ -286,17 +266,20 @@ int main(int argc, char** argv)
         
     for (size_t i=2; i<argc; ++i)
     {
-        if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--no-contradictions") == 0)
-        {
-            printf("# Not using contradictions.\n");
-            bUseContradictions = false;
-        }
+        if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--contradictions") == 0)
+            bUseContradictions = true;
     }
     
     if (bUseContradictions)
+    {
+        printf("# Using contradictions.\n");
         SolveWithContradictions();
+    }
     else
+    {
+        printf("# Not using contradictions.\n");
         Solve();
+    }
     
     PrintCells();
     
