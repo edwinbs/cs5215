@@ -134,6 +134,10 @@ int SolveWithContradictions()
     const int nTotalCnt = nRowCnt * nColCnt;
     int ngi = -1; //next guess index, only allow 1 time guessing per cell
     
+    //Just statistics
+    int attempts = 0;
+    int success  = 0;
+    
     vector<TriState> inverse;   //The sequence with inverse of the guessed constraint
     vector<TriState> original;  //The sequence before the guess was made
 
@@ -144,15 +148,17 @@ int SolveWithContradictions()
         if (nRet == -1) //Contradiction
         {
             //The inverse of the constraint is correct, for sure
+            ++success;
             for (size_t i=0; i<nTotalCnt; ++i)
                 pCells[i] = inverse[i];
             original.clear();
             continue;
         }
         else if (nRet == 1) //Everything has been solved
-            return 1;
+            break;
         
         //else, stuck with no unprocessed constraint
+        if (success) --success;
         
         //We were guessing something, that guess leads to nowhere, revert it
         if (original.size() != 0)
@@ -164,7 +170,7 @@ int SolveWithContradictions()
         //Find the next cell to guess (value should be ts_dontknow)
         ngi = NextUndecidedAfter(ngi);
         if (ngi == -1) //All cells have been attempted
-            return 0;
+            break;
 
         //Save sequence before guessing as original
         original.clear();
@@ -172,18 +178,18 @@ int SolveWithContradictions()
             original.push_back(pCells[i]);
 
         //Guess as block
-        pCells[ngi] = ts_true;
+        ++attempts; ++success;
+        pCells[ngi] = ts_false;
         
         //Save inverse of the sequence with the guess
         inverse.clear();
         for (size_t i=0; i<nTotalCnt; ++i)
             inverse.push_back(pCells[i]);
         
-        pCells[ngi] = ts_false;
-        
+        pCells[ngi] = ts_true;
         //Continue to propagate constraints
     }
-    
+    printf("# Contradictions attempted=%d, successful=%d\n", attempts, success);
     return 0;
 }
 
@@ -191,21 +197,33 @@ int SolveWithContradictions()
 
 void PrintInstruction()
 {
-    printf("NONOGRAM SOLVER by Edwin and Tat Thang\n");
+    printf("NONOGRAM SOLVER by Edwin and Thang\n");
     printf("Usage: nonogram <input-file> [options]\n");
     printf("Options:\n");
     printf("-s --contradictions\n");
     printf("    Enable contradictions (see: Wikipedia)\n");
+    printf("-a --alternate\n");
+    printf("    Print output using '@' and spaces\n");
 }
 
-void PrintCells()
+inline char Alternate(TriState n)
+{
+    switch (n)
+    {
+        case ts_true:   return '@';
+        case ts_false:  return ' ';
+        default:        return '_';
+    }
+}
+
+void PrintCells(bool bAlternatePrint)
 {
     for(size_t r=0; r<nRowCnt; ++r)
     {
         size_t start=r*nColCnt, end=start+nColCnt;
         for(size_t i=start; i<end; ++i)
         {
-            printf("%c",pCells[i]);
+            printf("%c", bAlternatePrint ? Alternate(pCells[i]) : pCells[i]);
         }
         printf("\n");
     }
@@ -273,6 +291,7 @@ int ReadFile(const char* filename)
 int main(int argc, char** argv)
 {
     bool bUseContradictions = false;
+    bool bAlternatePrint = false;
     
     if (argc<2)
     {
@@ -287,6 +306,8 @@ int main(int argc, char** argv)
     {
         if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--contradictions") == 0)
             bUseContradictions = true;
+        else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--alternate") == 0)
+            bAlternatePrint = true;
     }
     
     if (bUseContradictions)
@@ -299,6 +320,6 @@ int main(int argc, char** argv)
         printf("# Not using contradictions.\n");
         Solve();
     }
-    PrintCells();
+    PrintCells(bAlternatePrint);
     return 0;
 }
