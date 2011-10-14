@@ -1,9 +1,16 @@
+/**
+ * nonogram.h
+ * 
+ * Class declaration of line solver.
+ *
+ * @author  Edwin Boaz Soenaryo
+ * @author  Nguyen Tat Thang
+ */
+
 #pragma once
 
 #include <cstdlib>
 #include <vector>
-#include <stdio.h>
-#include <map>
 
 
 typedef enum
@@ -13,22 +20,11 @@ typedef enum
     ts_dontknow = '_'
 } TriState;
 
-typedef struct _Cell
-{
-    TriState        val;
-    
-    explicit _Cell(TriState inVal)
-    : val(inVal) { }
-    
-    _Cell()
-    : val(ts_dontknow) { }
-} Cell;
-
 class CInferenceEngine
 {
 public:
     CInferenceEngine(std::vector<unsigned int>& vecConst,
-        std::vector<Cell>& vecCells)
+        std::vector<TriState>& vecCells)
     : m_vecConst(vecConst)
     , m_vecCells(vecCells)
     , m_bSelfChanged(false)
@@ -45,18 +41,16 @@ public:
 private:
     void DebugPrint();
     
-    bool Assign(Cell& cell, TriState newVal, size_t cellIndex);
+    bool Assign(TriState& cell, TriState newVal, size_t cellIndex);
     
     void CheckCompletedLine();
-        
-    void Omniscient();
     
-    void OmniscientImpl(int b, int* pos, TriState* accumulator, bool& first);
+    void Enumerate(int b, int* pos, TriState* accumulator, bool& first);
     
-    void OmniscientAccumulate(int* pos, TriState* accumulator, bool& first);
+    void Accumulate(int* pos, TriState* accumulator, bool& first);
     
     std::vector<unsigned int>&  m_vecConst;
-    std::vector<Cell>&          m_vecCells;
+    std::vector<TriState>&      m_vecCells;
     std::vector<bool>           m_vecChanged;
     bool                        m_bSelfChanged;
     

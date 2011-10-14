@@ -5,26 +5,26 @@ using namespace std;
 class CNonogramTest
 {
 public:
-    static void Test_Omniscient()
+    static void test_inference_1()
     {
         vector<unsigned int> vecConst;
         vecConst.push_back(1);
         vecConst.push_back(1);
         
-        vector<Cell> vecCells;
-        vecCells.push_back(Cell(ts_dontknow));
-        vecCells.push_back(Cell(ts_true));
-        vecCells.push_back(Cell(ts_dontknow));
-        vecCells.push_back(Cell(ts_true));
-        vecCells.push_back(Cell(ts_dontknow));
+        vector<TriState> vecCells;
+        vecCells.push_back(ts_dontknow);
+        vecCells.push_back(ts_true);
+        vecCells.push_back(ts_dontknow);
+        vecCells.push_back(ts_true);
+        vecCells.push_back(ts_dontknow);
         
         CInferenceEngine ie(vecConst, vecCells);
-        ie.Omniscient();
+        ie.Infer();
     }
 };
 
 int main(int argc, char** argv)
 {
-    CNonogramTest::Test_Omniscient();
+    CNonogramTest::test_inference_1();
 }
 

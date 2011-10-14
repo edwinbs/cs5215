@@ -1,14 +1,22 @@
+/**
+ * inference.cc
+ * 
+ * Line solver implementation.
+ *
+ * @author  Edwin Boaz Soenaryo
+ * @author  Nguyen Tat Thang
+ */
+
 #include "nonogram.h"
 
 #include <cstring>
-#include <map>
+#include <stdio.h>
 
 using namespace std;
 
 
-#define MY_ASSERT(expr) if (!(expr)) { throw -1; }
-
-void CInferenceEngine::DebugPrint()
+// Prints the line e.g. const=[1 2] cells[_*.__*__.]
+inline void CInferenceEngine::DebugPrint()
 {
 #ifdef _DEBUG
     printf("const=[");
@@ -19,43 +27,37 @@ void CInferenceEngine::DebugPrint()
     }
     
     printf("] cells=[");
-    for (std::vector<Cell>::const_iterator it= m_vecCells.begin();
+    for (std::vector<TriState>::const_iterator it= m_vecCells.begin();
          it != m_vecCells.end(); ++it)
     {
-        printf("%c ", it->val);
+        printf("%c", *it);
     }
     printf("]\n");
 #endif
 }
 
-inline bool CInferenceEngine::Assign(Cell& cell, TriState newVal, size_t cellIndex)
+// Assigns new value to the referenced cell.
+// If the cell did not previously have a value, the changed cell list will be updated
+// to reflect the presence of new constraint.
+// If the new value is different from previous value, there is a contradiction.
+inline bool CInferenceEngine::Assign(TriState& cell, TriState newVal, size_t cellIndex)
 {
-    if (cell.val != newVal)
+    if (cell != newVal)
     {
-        MY_ASSERT(cell.val == ts_dontknow);
-        cell.val = newVal;
+        if (cell != ts_dontknow) throw -1; //Contradiction occurred
+        cell = newVal;
         m_bSelfChanged = true;
         m_vecChanged[cellIndex] = true;
         return true;
     }
-    
     return false;
 }
 
-int CInferenceEngine::Infer()
-{
-    try
-    {
-        Omniscient();
-        return 0;
-    }
-    catch (...)
-    {
-        return -1;
-    }
-}
-
-void CInferenceEngine::OmniscientAccumulate(int* pos, TriState* accumulator, bool& bFirst)
+// Intersects solids and spaces among valid positions
+// Note that because this algorithm enumerates all valid positions,
+// we do not need to care about which block a solid/space belongs to
+// (unlike Wikipedia's Simple Blocks and Simple Spaces).
+void CInferenceEngine::Accumulate(int* pos, TriState* accumulator, bool& bFirst)
 {
     const int count = m_vecConst.size();
     const int len = m_vecCells.size();
@@ -81,11 +83,16 @@ void CInferenceEngine::OmniscientAccumulate(int* pos, TriState* accumulator, boo
     bFirst = false;
 }
 
-void CInferenceEngine::OmniscientImpl(int b, int* pos, TriState* accumulator, bool& bFirst)
+// Enumerates all possible starting positions for each blocks in the current line.
+// This enumeration respects the presence of other blocks in the line and constraints
+// (cells which value have been determined)
+// When it finds a valid arrangement, it will call Accumulate to intersect these valid positions
+void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& bFirst)
 {
     if (b == m_vecConst.size())
     {
-        OmniscientAccumulate(pos, accumulator, bFirst);
+        //We have a valid set of block positions
+        Accumulate(pos, accumulator, bFirst);
         return;
     }
     
@@ -97,64 +104,79 @@ void CInferenceEngine::OmniscientImpl(int b, int* pos, TriState* accumulator, bo
     {
         pos[b] = i;
         
-        bool bUncovering = false;
+        //Between the previous block's end to this block's start,
+        //there should not be any constraint which is a solid.
+        bool bViolatesSolid = false;
         for (int j=prevSpaceStart; j<i; ++j)
         {
-            if (m_vecCells[j].val == ts_true)
+            if (m_vecCells[j] == ts_true)
             {
-                bUncovering = true;
+                bViolatesSolid = true;
                 break;
             }
         }
-        if (bUncovering) continue;
+        if (bViolatesSolid) continue;
         
-        bool bCovering = false;
+        //From this block's start to this block's end,
+        //there should not be any constraint which is a space.
+        bool bViolatesSpace = false;
         for (int j=i; j<i+m_vecConst[b]; ++j)
         {
-            if (j >= m_vecCells.size() || m_vecCells[j].val == ts_false)
+            if (j >= m_vecCells.size() || m_vecCells[j] == ts_false)
             {
-                bCovering = true;
+                bViolatesSpace = true;
                 break;
             }
         }
-        if (bCovering) continue;
+        if (bViolatesSpace) continue;
         
+        //Special handling for the last block
+        //After this block's end onwards, there should not be any
+        //constraint which is a solid.
+        //TODO: Refactor this
         if (b == m_vecConst.size()-1)
         {
             for (int j=i+m_vecConst[b]; j<m_vecCells.size(); ++j)
             {
-                if (m_vecCells[j].val == ts_true)
+                if (m_vecCells[j] == ts_true)
                 {
-                    bUncovering = true;
+                    bViolatesSolid = true;
                     break;
                 }
             }
-            if (bUncovering) continue;
+            if (bViolatesSolid) continue;
         }
         
-        OmniscientImpl(b+1, pos, accumulator, bFirst);
+        Enumerate(b+1, pos, accumulator, bFirst);
     }
 }
 
-void CInferenceEngine::Omniscient()
+// Wrapper function to run the line solver algorithm.
+// Sets up the data structures and assigns back the output.
+int CInferenceEngine::Infer()
 {
-    const int len = m_vecConst.size();
-    int* pos = new int[len];
-    memset(pos, 0, len * sizeof(int));
-    
-    const int count = m_vecCells.size();
-    TriState* accumulator = new TriState[count];
-    for (size_t i=0; i<count; ++i)
-        accumulator[i] = ts_dontknow;
-        
-    bool bFirst = true;
-    OmniscientImpl(0, pos, accumulator, bFirst);
-    
-    for (size_t i=0; i<count; ++i)
+    try
     {
-        if (accumulator[i] != ts_dontknow)
-            Assign(m_vecCells[i], accumulator[i], i);
-    }
+        const int len = m_vecConst.size();
+        int* pos = new int[len];
+        memset(pos, 0, len * sizeof(int));
     
-    DebugPrint();
+        const int count = m_vecCells.size();
+        TriState* accumulator = new TriState[count];
+        for (size_t i=0; i<count; ++i)
+            accumulator[i] = ts_dontknow;
+        
+        bool bFirst = true;
+        Enumerate(0, pos, accumulator, bFirst);
+        
+        //Save the inference output
+        for (size_t i=0; i<count; ++i)
+        {
+            if (accumulator[i] != ts_dontknow)
+                Assign(m_vecCells[i], accumulator[i], i);
+        }
+    
+        DebugPrint();
+        return 0;
+    } catch (...) { return -1; } //Contradiction
 }
