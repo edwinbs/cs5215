@@ -92,13 +92,53 @@ inline int NextUndecidedAfter(int n)
     return -1;
 }
 
+// Heuristic taken from: TODO
+// Seems to help for difficult puzzles
+inline int HeuristicValueFor(int idx)
+{
+    //Get the clues for the line
+    vector<unsigned int>* pVecConst;
+    unsigned int len=0;
+    if (idx < nRowCnt)
+    {
+        pVecConst = &(vecRowConst[idx]);
+        len = nColCnt;
+    }
+    else
+    {
+        pVecConst = &(vecColConst[idx-nRowCnt]);
+        len = nRowCnt;
+    }
+    
+    //Sum the clues
+    int val = 0;
+    int n = pVecConst->size();
+    for (vector<unsigned int>::const_iterator it=(*pVecConst).begin();
+         it != (*pVecConst).end(); ++it)
+    {
+        val += *it;
+    }
+    
+    //Some magic formula I don't understand
+    val = (n+1) * val + n * (n-len-1);
+    if (val < 0) return 0;
+}
+
 // Returns the index of a cell in the storage which has unprocessed constraint
 inline int GetADirtyCell()
 {
+    int maxh=-1; int ret=-1;
     for (int i=0; i<nLinesCnt; ++i)
-        if (pDirty[i]) return i;
+    {
+        if (pDirty[i])
+        {
+            int h=HeuristicValueFor(i);
+            if (h > maxh)
+                ret=i;
+        }
+    }
     
-    return -1;
+    return ret;
 }
 
 // Keeps working on sequences with unprocessed constraints until
