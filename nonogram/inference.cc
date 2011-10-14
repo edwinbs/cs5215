@@ -15,11 +15,11 @@
 using namespace std;
 
 
-// Prints the line e.g. const=[1 2] cells[_*.__*__.]
+// Prints the line e.g. # clue=[1 2] cells=[_*.__*__.]
 inline void CInferenceEngine::DebugPrint()
 {
 #ifdef _DEBUG
-    printf("const=[");
+    printf("# clue=[");
     for (std::vector<unsigned int>::const_iterator it=m_vecConst.begin();
          it !=m_vecConst.end(); ++it)
     {

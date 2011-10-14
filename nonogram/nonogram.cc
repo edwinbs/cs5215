@@ -17,9 +17,12 @@ using namespace std;
 
 namespace
 {
-    TriState*       pCells;     //Storage of cell values. Each row is contiguous, starts from row 1.
-    unsigned int    nColCnt;    //No of columns
-    unsigned int    nRowCnt;    //No of rows
+    TriState*       pCells    = NULL;  //Storage of cell values. Each row is contiguous, starts from row 1.
+    bool*           pDirty    = NULL;  //Whether a line has unprocessed constraints
+    unsigned int    nColCnt   = 0;     //No of columns
+    unsigned int    nRowCnt   = 0;     //No of rows
+    unsigned int    nLinesCnt = 0;     //Total no of lines
+    unsigned int    nCellsCnt = 0;     //Total no of cells
 
     vector< vector<unsigned int> >   vecColConst;   //i-th element is the list of constraints on col i
     vector< vector<unsigned int> >   vecRowConst;   //same, for row
@@ -27,6 +30,8 @@ namespace
 
 // Given row and column, find the entry position in the storage.
 #define POS(r, c) ((r) * nColCnt + (c))
+#define ROW(n) ((n) / nColCnt)
+#define COL(n) ((n) % nColCnt)
 
 // Wrapper function to extract the desired sequence from storage,
 // pass the sequence to the Inference Engine, and store back the result.
@@ -79,14 +84,20 @@ int Reduce(size_t i, bool* pDirty)
 
 // Find the next cell after position n in the entire storage
 // which is still unsolved (value=ts_dontknow, meaning domain={0, 1}).
-int NextUndecidedAfter(int n)
+inline int NextUndecidedAfter(int n)
 {
-    const int nTotalCnt = nRowCnt * nColCnt;
-    for (int i=n+1; i<nTotalCnt; ++i)
-    {
-        if (pCells[i] == ts_dontknow)
-            return i;
-    }
+    for (int i=n+1; i<nCellsCnt; ++i)
+        if (pCells[i] == ts_dontknow) return i;
+        
+    return -1;
+}
+
+// Returns the index of a cell in the storage which has unprocessed constraint
+inline int GetADirtyCell()
+{
+    for (int i=0; i<nLinesCnt; ++i)
+        if (pDirty[i]) return i;
+    
     return -1;
 }
 
@@ -95,34 +106,28 @@ int NextUndecidedAfter(int n)
 // After every processing, new constraints may get created on other sequences.
 int Solve()
 {
-    const size_t nTotalCnt = nRowCnt + nColCnt;
-    
-    //Initially, mark all sequences (rows and columns) as dirty.
-    bool* pDirty = new bool[nTotalCnt];
-    for (size_t i=0; i<nTotalCnt; ++i)
-        pDirty[i] = true;
-        
-    while (true) //Keep...
+    int next=-1;
+    while ((next=GetADirtyCell()) != -1) //Keep looking for a line which is dirty
     {
-        //...looking for a sequence which is dirty
-        size_t i=0;
-        for (; i<nTotalCnt; ++i)
-        {
-            if (pDirty[i])
-            {
-                if (Reduce(i, pDirty) == -1)
-                    return -1;
-                
-                //Check if all cells in the entire storage is solved
-                if (NextUndecidedAfter(-1) == -1)
-                    return 1;
-                    
-                break;
-            }
-        }
-        if (i == nTotalCnt) return 0; //No more dirty cells and not done
+        if (Reduce(next, pDirty) == -1)
+            return -1;
+        
+        //Check if all cells in the entire storage is solved
+        if (NextUndecidedAfter(-1) == -1)
+            return 1;
     }
     return 0;
+}
+
+// Marks all lines as clean except for those where the given cell resides
+inline void AllCleanExcept(int index)
+{
+    for (size_t i=0; i<nLinesCnt; ++i)
+        pDirty[i] = false;  
+        
+    if (index < 0) return;  
+    pDirty[ROW(index)] = true;
+    pDirty[COL(index)] = true;
 }
 
 // Do solving with constraint propagation, when stuck with no more
@@ -131,39 +136,32 @@ int Solve()
 // the constraint should be the other way around.
 int SolveWithContradictions()
 {
-    const int nTotalCnt = nRowCnt * nColCnt;
     int ngi = -1; //next guess index, only allow 1 time guessing per cell
-    
-    //Just statistics
-    int attempts = 0;
-    int success  = 0;
-    
     vector<TriState> inverse;   //The sequence with inverse of the guessed constraint
     vector<TriState> original;  //The sequence before the guess was made
 
     while (true)
     {
         int nRet = Solve();
-        
         if (nRet == -1) //Contradiction
         {
             //The inverse of the constraint is correct, for sure
-            ++success;
-            for (size_t i=0; i<nTotalCnt; ++i)
+            for (size_t i=0; i<nCellsCnt; ++i)
                 pCells[i] = inverse[i];
+                
             original.clear();
+            AllCleanExcept(ngi);
             continue;
         }
         else if (nRet == 1) //Everything has been solved
             break;
         
         //else, stuck with no unprocessed constraint
-        if (success) --success;
         
         //We were guessing something, that guess leads to nowhere, revert it
         if (original.size() != 0)
         {
-            for (size_t i=0; i<nTotalCnt; ++i)
+            for (size_t i=0; i<nCellsCnt; ++i)
                 pCells[i] = original[i];
         }
         
@@ -174,46 +172,35 @@ int SolveWithContradictions()
 
         //Save sequence before guessing as original
         original.clear();
-        for (size_t i=0; i<nTotalCnt; ++i)
+        for (size_t i=0; i<nCellsCnt; ++i)
             original.push_back(pCells[i]);
 
         //Guess as block
-        ++attempts; ++success;
         pCells[ngi] = ts_false;
+        AllCleanExcept(ngi);
         
         //Save inverse of the sequence with the guess
         inverse.clear();
-        for (size_t i=0; i<nTotalCnt; ++i)
+        for (size_t i=0; i<nCellsCnt; ++i)
             inverse.push_back(pCells[i]);
         
         pCells[ngi] = ts_true;
         //Continue to propagate constraints
     }
-    printf("# Contradictions attempted=%d, successful=%d\n", attempts, success);
     return 0;
 }
 
+// --------------------------------------------
 // ----- No more solver logic beyond this -----
+// --------------------------------------------
 
 void PrintInstruction()
 {
-    printf("NONOGRAM SOLVER by Edwin and Thang\n");
-    printf("Usage: nonogram <input-file> [options]\n");
-    printf("Options:\n");
-    printf("-s --contradictions\n");
-    printf("    Enable contradictions (see: Wikipedia)\n");
-    printf("-a --alternate\n");
-    printf("    Print output using '@' and spaces\n");
-}
-
-inline char Alternate(TriState n)
-{
-    switch (n)
-    {
-        case ts_true:   return '@';
-        case ts_false:  return ' ';
-        default:        return '_';
-    }
+    printf("# NONOGRAM SOLVER by Edwin and Thang\n");
+    printf("# Usage: nonogram <input-file> [options]\n");
+    printf("# Options:\n");
+    printf("# -s --contradictions\n");
+    printf("#    Enable contradictions (see: Wikipedia)\n");
 }
 
 void PrintCells(bool bAlternatePrint)
@@ -223,7 +210,7 @@ void PrintCells(bool bAlternatePrint)
         size_t start=r*nColCnt, end=start+nColCnt;
         for(size_t i=start; i<end; ++i)
         {
-            printf("%c", bAlternatePrint ? Alternate(pCells[i]) : pCells[i]);
+            printf("%c", pCells[i]);
         }
         printf("\n");
     }
@@ -260,9 +247,16 @@ int ReadFile(const char* filename)
             {
             case 0: //Cols and rows count 
                 sscanf(line, "%u %u", &nColCnt, &nRowCnt);
-                pCells = new TriState[nRowCnt * nColCnt];
-                for (size_t i=0; i<nRowCnt * nColCnt; ++i)
+                nLinesCnt = nColCnt+nRowCnt;
+                nCellsCnt = nColCnt*nRowCnt;
+                
+                pDirty = new bool[nCellsCnt];
+                pCells = new TriState[nCellsCnt];
+                for (size_t i=0; i<nCellsCnt; ++i)
+                {
                     pCells[i]=ts_dontknow;
+                    pDirty[i]=true;
+                }
                 ++step;
                 untilNextStep = nColCnt;
                 break;
@@ -281,7 +275,7 @@ int ReadFile(const char* filename)
             }
         }
     } catch (...) {
-        printf("Failed to read file: %s\n", filename);
+        printf("# Failed to read file: %s\n", filename);
         return EXIT_FAILURE;
     }
     
@@ -306,8 +300,6 @@ int main(int argc, char** argv)
     {
         if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--contradictions") == 0)
             bUseContradictions = true;
-        else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--alternate") == 0)
-            bAlternatePrint = true;
     }
     
     if (bUseContradictions)
