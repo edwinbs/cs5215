@@ -28,8 +28,10 @@ public:
     : m_vecConst(vecConst)
     , m_vecCells(vecCells)
     , m_bSelfChanged(false)
+    , m_nBlockCount(vecConst.size())
+    , m_nCellCount(vecCells.size())
     {
-        m_vecChanged.resize(vecCells.size());
+        m_vecChanged.resize(m_nCellCount);
     };
 
     int Infer();
@@ -53,6 +55,8 @@ private:
     std::vector<TriState>&      m_vecCells;
     std::vector<bool>           m_vecChanged;
     bool                        m_bSelfChanged;
+    int                         m_nBlockCount;
+    int                         m_nCellCount;
     
     friend class CNonogramTest;
 };

@@ -59,20 +59,15 @@ inline bool CInferenceEngine::Assign(TriState& cell, TriState newVal, size_t cel
 // (unlike Wikipedia's Simple Blocks and Simple Spaces).
 void CInferenceEngine::Accumulate(int* pos, TriState* accumulator, bool& bFirst)
 {
-    const int count = m_vecConst.size();
-    const int len = m_vecCells.size();
-    
-    TriState tmp[len];
-    for (int i=0; i<len; ++i)
+    TriState tmp[m_nCellCount];
+    for (int i=0; i<m_nCellCount; ++i)
         tmp[i] = ts_false;
     
-    for (int i=0; i<count; ++i)
-    {
+    for (int i=0; i<m_nBlockCount; ++i)
         for (int j=0; j<m_vecConst[i]; ++j)
             tmp[pos[i] + j] = ts_true;
-    }
     
-    for (int i=0; i<len; ++i)
+    for (int i=0; i<m_nCellCount; ++i)
     {
         if (bFirst)
             accumulator[i] = tmp[i];
@@ -89,7 +84,7 @@ void CInferenceEngine::Accumulate(int* pos, TriState* accumulator, bool& bFirst)
 // When it finds a valid arrangement, it will call Accumulate to intersect these valid positions
 void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& bFirst)
 {
-    if (b == m_vecConst.size())
+    if (b == m_nBlockCount)
     {
         //We have a valid set of block positions
         Accumulate(pos, accumulator, bFirst);
@@ -99,8 +94,7 @@ void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& b
     int start = (b == 0) ? 0 : pos[b-1] + m_vecConst[b-1] + 1;
     int prevSpaceStart = (b == 0) ? 0 : pos[b-1] + m_vecConst[b-1];
     
-    const int len = m_vecCells.size();
-    for (int i=start; i<len; ++i)
+    for (int i=start; i<m_nCellCount; ++i)
     {
         pos[b] = i;
         
@@ -115,7 +109,7 @@ void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& b
         //From this block's start to this block's end,
         //there should not be any constraint which is a space.
         for (; j<i+m_vecConst[b]; ++j)
-            if (j >= m_vecCells.size() || m_vecCells[j] == ts_false) break;
+            if (j >= m_nCellCount || m_vecCells[j] == ts_false) break;
             
         if (j<i+m_vecConst[b]) continue;
         
@@ -124,10 +118,10 @@ void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& b
         //constraint which is a solid.
         if (b == m_vecConst.size()-1)
         {
-            for (; j<len; ++j)
+            for (; j<m_nCellCount; ++j)
                 if (m_vecCells[j] == ts_true) break;
                 
-            if (j<len) continue;
+            if (j<m_nCellCount) continue;
         }
         
         Enumerate(b+1, pos, accumulator, bFirst);
@@ -140,20 +134,19 @@ int CInferenceEngine::Infer()
 {
     try
     {
-        const int len = m_vecConst.size();
-        int pos[len];
-        memset(pos, 0, len * sizeof(int));
+        int pos[m_nBlockCount];
+        memset(pos, 0, m_nBlockCount * sizeof(int));
     
         const int count = m_vecCells.size();
-        TriState accumulator[count];
-        for (size_t i=0; i<count; ++i)
+        TriState accumulator[m_nCellCount];
+        for (size_t i=0; i<m_nCellCount; ++i)
             accumulator[i] = ts_dontknow;
         
         bool bFirst = true;
         Enumerate(0, pos, accumulator, bFirst);
         
         //Save the inference output
-        for (size_t i=0; i<count; ++i)
+        for (size_t i=0; i<m_nCellCount; ++i)
             Assign(m_vecCells[i], accumulator[i], i);
     
         DebugPrint();
