@@ -42,7 +42,7 @@ inline void CInferenceEngine::DebugPrint()
 // If the new value is different from previous value, there is a contradiction.
 inline bool CInferenceEngine::Assign(TriState& cell, TriState newVal, size_t cellIndex)
 {
-    if (cell != newVal)
+    if (newVal != ts_dontknow && cell != newVal)
     {
         if (cell != ts_dontknow) throw -1; //Contradiction occurred
         cell = newVal;
@@ -106,45 +106,28 @@ void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& b
         
         //Between the previous block's end to this block's start,
         //there should not be any constraint which is a solid.
-        bool bViolatesSolid = false;
-        for (int j=prevSpaceStart; j<i; ++j)
-        {
-            if (m_vecCells[j] == ts_true)
-            {
-                bViolatesSolid = true;
-                break;
-            }
-        }
-        if (bViolatesSolid) continue;
+        int j=prevSpaceStart;
+        for (; j<i; ++j)
+            if (m_vecCells[j] == ts_true) break;
+            
+        if (j<i) continue;
         
         //From this block's start to this block's end,
         //there should not be any constraint which is a space.
-        bool bViolatesSpace = false;
-        for (int j=i; j<i+m_vecConst[b]; ++j)
-        {
-            if (j >= m_vecCells.size() || m_vecCells[j] == ts_false)
-            {
-                bViolatesSpace = true;
-                break;
-            }
-        }
-        if (bViolatesSpace) continue;
+        for (; j<i+m_vecConst[b]; ++j)
+            if (j >= m_vecCells.size() || m_vecCells[j] == ts_false) break;
+            
+        if (j<i+m_vecConst[b]) continue;
         
         //Special handling for the last block
         //After this block's end onwards, there should not be any
         //constraint which is a solid.
-        //TODO: Refactor this
         if (b == m_vecConst.size()-1)
         {
-            for (int j=i+m_vecConst[b]; j<m_vecCells.size(); ++j)
-            {
-                if (m_vecCells[j] == ts_true)
-                {
-                    bViolatesSolid = true;
-                    break;
-                }
-            }
-            if (bViolatesSolid) continue;
+            for (; j<len; ++j)
+                if (m_vecCells[j] == ts_true) break;
+                
+            if (j<len) continue;
         }
         
         Enumerate(b+1, pos, accumulator, bFirst);
@@ -158,11 +141,11 @@ int CInferenceEngine::Infer()
     try
     {
         const int len = m_vecConst.size();
-        int* pos = new int[len];
+        int pos[len];
         memset(pos, 0, len * sizeof(int));
     
         const int count = m_vecCells.size();
-        TriState* accumulator = new TriState[count];
+        TriState accumulator[count];
         for (size_t i=0; i<count; ++i)
             accumulator[i] = ts_dontknow;
         
@@ -171,10 +154,7 @@ int CInferenceEngine::Infer()
         
         //Save the inference output
         for (size_t i=0; i<count; ++i)
-        {
-            if (accumulator[i] != ts_dontknow)
-                Assign(m_vecCells[i], accumulator[i], i);
-        }
+            Assign(m_vecCells[i], accumulator[i], i);
     
         DebugPrint();
         return 0;
