@@ -71,8 +71,12 @@ void CInferenceEngine::Accumulate(int* pos, TriState* accumulator, bool& bFirst)
     {
         if (bFirst)
             accumulator[i] = tmp[i];
-        else if (accumulator[i] != tmp[i])
+        else if (accumulator[i] != ts_dontknow && accumulator[i] != tmp[i])
+        {
             accumulator[i] = ts_dontknow;
+            //Decr no of cells that we can still possibly infer
+            if (--m_nRemainingCells == 0) throw 0;
+        }
     }
     
     bFirst = false;
@@ -150,5 +154,5 @@ int CInferenceEngine::Infer()
     
         DebugPrint();
         return 0;
-    } catch (...) { return -1; } //Contradiction
+    } catch (int n) { return n; } //Contradiction
 }
