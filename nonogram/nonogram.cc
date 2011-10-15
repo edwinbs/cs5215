@@ -39,45 +39,26 @@ int Reduce(size_t i, bool* pDirty)
 {
     pDirty[i]=false;
     vector<unsigned int>* pVecConst = NULL;
-    vector<TriState> vecCells;
+    vector<TriState*> vecCells;
     
     //Extract the desired sequence
     if (i < nRowCnt) //Sequence is a row
     {
         pVecConst = &(vecRowConst[i]);
         for (size_t c=0; c<nColCnt; ++c)
-            vecCells.push_back(pCells[POS(i,c)]);
+            vecCells.push_back(&(pCells[POS(i,c)]));
     }
     else //Sequence is a column
     {
         pVecConst = &(vecColConst[i-nRowCnt]);
         for (size_t r=0; r<nRowCnt; ++r)
-            vecCells.push_back(pCells[POS(r,i-nRowCnt)]);
+            vecCells.push_back(&(pCells[POS(r,i-nRowCnt)]));
     }
     
     //Pass the sequence to Inference Engine
-    CInferenceEngine ie(*pVecConst, vecCells);
+    CInferenceEngine ie(*pVecConst, vecCells, &(pDirty[i<nRowCnt?nRowCnt:0]));
     int nRet = ie.Infer();
     pDirty[i] = ie.IsSelfChanged();
-    vector<bool>& vecChanged = ie.GetChangeList();
-    
-    //Store back the sequence
-    if (i < nRowCnt) //Sequence is a row
-    {
-        for (size_t j=0; j<nColCnt; ++j)
-        {
-            pDirty[nRowCnt+j] |= vecChanged[j];
-            pCells[POS(i,j)] = vecCells[j];
-        }
-    }
-    else //Sequence is a column
-    {
-        for (size_t j=0; j<nRowCnt; ++j)
-        {
-            pDirty[j] |= vecChanged[j];
-            pCells[POS(j,i-nRowCnt)] = vecCells[j];
-        }
-    }
     
     return nRet;
 }
@@ -95,11 +76,10 @@ inline int NextUndecidedAfter(int n)
 // Returns the index of a cell in the storage which has unprocessed constraint
 inline int GetADirtyCell()
 {
-    int maxh=-1; int ret=-1;
     for (int i=0; i<nLinesCnt; ++i)
         if (pDirty[i]) return i;
     
-    return ret;
+    return -1;
 }
 
 // Keeps working on sequences with unprocessed constraints until

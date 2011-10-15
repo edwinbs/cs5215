@@ -27,10 +27,10 @@ inline void CInferenceEngine::DebugPrint()
     }
     
     printf("] cells=[");
-    for (std::vector<TriState>::const_iterator it= m_vecCells.begin();
+    for (std::vector<TriState*>::const_iterator it= m_vecCells.begin();
          it != m_vecCells.end(); ++it)
     {
-        printf("%c", *it);
+        printf("%c", **it);
     }
     printf("]\n");
 #endif
@@ -47,7 +47,7 @@ inline bool CInferenceEngine::Assign(TriState& cell, TriState newVal, size_t cel
         if (cell != ts_dontknow) throw -1; //Contradiction occurred
         cell = newVal;
         m_bSelfChanged = true;
-        m_vecChanged[cellIndex] = true;
+        m_pbDirty[cellIndex] = true;
         return true;
     }
     return false;
@@ -102,14 +102,14 @@ void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& b
         //there should not be any constraint which is a solid.
         int j=prevSpaceStart;
         for (; j<i; ++j)
-            if (m_vecCells[j] == ts_true) break;
+            if (*(m_vecCells[j]) == ts_true) break;
             
         if (j<i) continue;
         
         //From this block's start to this block's end,
         //there should not be any constraint which is a space.
         for (; j<i+m_vecConst[b]; ++j)
-            if (j >= m_nCellCount || m_vecCells[j] == ts_false) break;
+            if (j >= m_nCellCount || *(m_vecCells[j]) == ts_false) break;
             
         if (j<i+m_vecConst[b]) continue;
         
@@ -119,7 +119,7 @@ void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& b
         if (b == m_vecConst.size()-1)
         {
             for (; j<m_nCellCount; ++j)
-                if (m_vecCells[j] == ts_true) break;
+                if (*(m_vecCells[j]) == ts_true) break;
                 
             if (j<m_nCellCount) continue;
         }
@@ -136,8 +136,7 @@ int CInferenceEngine::Infer()
     {
         int pos[m_nBlockCount];
         memset(pos, 0, m_nBlockCount * sizeof(int));
-    
-        const int count = m_vecCells.size();
+        
         TriState accumulator[m_nCellCount];
         for (size_t i=0; i<m_nCellCount; ++i)
             accumulator[i] = ts_dontknow;
@@ -147,7 +146,7 @@ int CInferenceEngine::Infer()
         
         //Save the inference output
         for (size_t i=0; i<m_nCellCount; ++i)
-            Assign(m_vecCells[i], accumulator[i], i);
+            Assign(*(m_vecCells[i]), accumulator[i], i);
     
         DebugPrint();
         return 0;

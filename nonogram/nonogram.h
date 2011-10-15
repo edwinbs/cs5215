@@ -24,21 +24,20 @@ class CInferenceEngine
 {
 public:
     CInferenceEngine(std::vector<unsigned int>& vecConst,
-        std::vector<TriState>& vecCells)
+        std::vector<TriState*>& vecCells,
+        bool* pbDirty)
     : m_vecConst(vecConst)
     , m_vecCells(vecCells)
     , m_bSelfChanged(false)
     , m_nBlockCount(vecConst.size())
     , m_nCellCount(vecCells.size())
+    , m_pbDirty(pbDirty)
     {
-        m_vecChanged.resize(m_nCellCount);
     };
 
     int Infer();
     
     bool IsSelfChanged() { return m_bSelfChanged; }
-    
-    std::vector<bool>& GetChangeList() { return m_vecChanged; }
 
 private:
     void DebugPrint();
@@ -52,8 +51,8 @@ private:
     void Accumulate(int* pos, TriState* accumulator, bool& first);
     
     std::vector<unsigned int>&  m_vecConst;
-    std::vector<TriState>&      m_vecCells;
-    std::vector<bool>           m_vecChanged;
+    std::vector<TriState*>&     m_vecCells;
+    bool*                       m_pbDirty;
     bool                        m_bSelfChanged;
     int                         m_nBlockCount;
     int                         m_nCellCount;
