@@ -91,6 +91,7 @@ void CInferenceEngine::Enumerate(int b, int* pos, TriState* accumulator, bool& b
     if (b == m_nBlockCount)
     {
         //We have a valid set of block positions
+        m_bSatisfiable = true;
         Accumulate(pos, accumulator, bFirst);
         return;
     }
@@ -143,10 +144,16 @@ int CInferenceEngine::Infer()
         
         TriState accumulator[m_nCellCount];
         for (size_t i=0; i<m_nCellCount; ++i)
+        {
             accumulator[i] = ts_dontknow;
+            if (*m_vecCells[i] == ts_dontknow)
+                ++m_nRemainingCells;
+        }
         
         bool bFirst = true;
         Enumerate(0, pos, accumulator, bFirst);
+        
+        if (!m_bSatisfiable) throw -1; //Contradiction
         
         //Save the inference output
         for (size_t i=0; i<m_nCellCount; ++i)
@@ -154,5 +161,5 @@ int CInferenceEngine::Infer()
     
         DebugPrint();
         return 0;
-    } catch (int n) { return n; } //Contradiction
+    } catch (int n) { return n; }
 }

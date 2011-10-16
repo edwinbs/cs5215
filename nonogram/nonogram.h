@@ -31,8 +31,9 @@ public:
     , m_bSelfChanged(false)
     , m_nBlockCount(vecConst.size())
     , m_nCellCount(vecCells.size())
-    , m_nRemainingCells(vecCells.size())
+    , m_nRemainingCells(0)
     , m_pbDirty(pbDirty)
+    , m_bSatisfiable(false)
     {
     };
 
@@ -58,6 +59,7 @@ private:
     int                         m_nBlockCount;
     int                         m_nCellCount;
     int                         m_nRemainingCells;
+    bool                        m_bSatisfiable;
     
     friend class CNonogramTest;
 };
