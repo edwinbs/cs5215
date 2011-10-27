@@ -6,17 +6,19 @@ public class Room {
     
 	String name;
 	int capacity;
+    boolean[][] availability;
     
-    public static Room create(String line)
+    public static Room create(String line, int days, int slotsPerDay)
     {
         StringTokenizer strTok = new StringTokenizer(line);
-        return new Room(strTok.nextToken(), Integer.parseInt(strTok.nextToken()));
+        return new Room(strTok.nextToken(), Integer.parseInt(strTok.nextToken()), days, slotsPerDay);
     }
 	
-	public Room(String name, int capacity) {
+	public Room(String name, int capacity, int days, int slotsPerDay) {
 		super();
 		this.name = name;
 		this.capacity = capacity;
+        this.availability = new boolean[days][slotsPerDay];
 	}
 
 	public String getName() {

@@ -1,73 +1,88 @@
 package entity;
 
+import java.util.HashMap;
 import java.util.StringTokenizer;
 
 public class Course {
 
-	String  name;
-    String  teacherName;
-	int     numOfLectures;
-	int     minWorkingDay;
-	int     minOfStudents;
-	
-	public static Course create(String line)
-    {
+    String name;
+    Teacher teacher;
+    int numOfLectures;
+    int minWorkingDay;
+    int minOfStudents;
+    Curriculum curriculum;
+    boolean[][] availability;
+
+    public static Course create(String line, 
+            HashMap<String, Teacher> teacherMap, int days, int slotsPerDay) {
+        
         StringTokenizer strTok = new StringTokenizer(line);
         return new Course(strTok.nextToken(),
-                           strTok.nextToken(),
-                           Integer.parseInt(strTok.nextToken()),
-                           Integer.parseInt(strTok.nextToken()),
-                           Integer.parseInt(strTok.nextToken()));
+                strTok.nextToken(),
+                Integer.parseInt(strTok.nextToken()),
+                Integer.parseInt(strTok.nextToken()),
+                Integer.parseInt(strTok.nextToken()),
+                teacherMap,
+                days, slotsPerDay);
     }
 
-	public Course(String name, String teacherName,
-			int numOfLectures, int minWorkingDay, int minOfStudents) {
-		super();
-		this.name = name;
-		this.teacherName = teacherName;
-		this.numOfLectures = numOfLectures;
-		this.minWorkingDay = minWorkingDay;
-		this.minOfStudents = minOfStudents;
-	}
+    public Course(String name, String teacherName,
+            int numOfLectures, int minWorkingDay, int minOfStudents,
+            HashMap<String, Teacher> teacherMap,
+            int days, int slotsPerDay) {
+        
+        super();
 
-	public String getName() {
-		return name;
-	}
+        this.name = name;
+        this.numOfLectures = numOfLectures;
+        this.minWorkingDay = minWorkingDay;
+        this.minOfStudents = minOfStudents;
+        this.availability = new boolean[days][slotsPerDay];
 
-	public void setName(String name) {
-		this.name = name;
-	}
+        if (!teacherMap.containsKey(teacherName)) {
+            teacherMap.put(teacherName, Teacher.create(days, slotsPerDay));
+        }
 
-	public int getNumOfLectures() {
-		return numOfLectures;
-	}
+        this.teacher = teacherMap.get(teacherName);
+    }
 
-	public void setNumOfLectures(int numOfLectures) {
-		this.numOfLectures = numOfLectures;
-	}
+    public String getName() {
+        return name;
+    }
 
-	public int getMinWorkingDay() {
-		return minWorkingDay;
-	}
+    public void setName(String name) {
+        this.name = name;
+    }
 
-	public void setMinWorkingDay(int minWorkingDay) {
-		this.minWorkingDay = minWorkingDay;
-	}
+    public int getNumOfLectures() {
+        return numOfLectures;
+    }
 
-	public int getMinOfStudents() {
-		return minOfStudents;
-	}
+    public void setNumOfLectures(int numOfLectures) {
+        this.numOfLectures = numOfLectures;
+    }
 
-	public void setMinOfStudents(int minOfStudents) {
-		this.minOfStudents = minOfStudents;
-	}
+    public int getMinWorkingDay() {
+        return minWorkingDay;
+    }
 
-	public String getTeacherName() {
-		return teacherName;
-	}
+    public void setMinWorkingDay(int minWorkingDay) {
+        this.minWorkingDay = minWorkingDay;
+    }
 
-	public void setTeacherName(String teacherName) {
-		this.teacherName = teacherName;
-	}
-    
+    public int getMinOfStudents() {
+        return minOfStudents;
+    }
+
+    public void setMinOfStudents(int minOfStudents) {
+        this.minOfStudents = minOfStudents;
+    }
+
+    public void setCurriculum(Curriculum curriculum) {
+        this.curriculum = curriculum;
+    }
+
+    public void setAvailable(boolean bAvailable, int day, int slot) {
+        this.availability[day][slot] = bAvailable;
+    }
 }
