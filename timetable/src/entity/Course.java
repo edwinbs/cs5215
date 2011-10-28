@@ -1,49 +1,75 @@
 package entity;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Random;
 import java.util.StringTokenizer;
 
 public class Course {
 
-    String name;
-    Teacher teacher;
-    int numOfLectures;
-    int minWorkingDay;
-    int minOfStudents;
-    Curriculum curriculum;
-    boolean[][] availability;
+    private String name;
+    private Teacher teacher;
+    private int numOfLectures;
+    private int minWorkingDay;
+    private int minOfStudents;
+    private int constraintLevel;
+    private ArrayList<Curriculum> curricula = new ArrayList<Curriculum>();
+    private ArrayList<Lecture> lectures = new ArrayList<Lecture>();
+    private ArrayList<Room> shuffledRooms = new ArrayList<Room>();
+    private boolean[][] unavailable;
 
-    public static Course create(String line, 
-            HashMap<String, Teacher> teacherMap, int days, int slotsPerDay) {
-        
+    public static Course create(String line,
+            ArrayList<Teacher> teacherList, int days, int slotsPerDay) {
+
         StringTokenizer strTok = new StringTokenizer(line);
-        return new Course(strTok.nextToken(),
+        Course c = new Course(strTok.nextToken(),
                 strTok.nextToken(),
                 Integer.parseInt(strTok.nextToken()),
                 Integer.parseInt(strTok.nextToken()),
                 Integer.parseInt(strTok.nextToken()),
-                teacherMap,
+                teacherList,
                 days, slotsPerDay);
+
+        for (Lecture l : c.getLectures()) {
+            l.setCourse(c);
+        }
+
+        return c;
     }
 
     public Course(String name, String teacherName,
             int numOfLectures, int minWorkingDay, int minOfStudents,
-            HashMap<String, Teacher> teacherMap,
+            ArrayList<Teacher> teacherList,
             int days, int slotsPerDay) {
-        
+
         super();
 
         this.name = name;
-        this.numOfLectures = numOfLectures;
-        this.minWorkingDay = minWorkingDay;
-        this.minOfStudents = minOfStudents;
-        this.availability = new boolean[days][slotsPerDay];
 
-        if (!teacherMap.containsKey(teacherName)) {
-            teacherMap.put(teacherName, Teacher.create(days, slotsPerDay));
+        this.numOfLectures = numOfLectures;
+        for (int i = 0; i < numOfLectures; ++i) {
+            this.lectures.add(Lecture.create(name));
         }
 
-        this.teacher = teacherMap.get(teacherName);
+        this.minWorkingDay = minWorkingDay;
+        this.minOfStudents = minOfStudents;
+        this.unavailable = new boolean[days][slotsPerDay];
+
+        //For some reason using HashMap is more expensive than linear search!
+        boolean bFound = false;
+        for (int i = 0; i < teacherList.size(); ++i) {
+            if (teacherList.get(i).getName().equals(teacherName)) {
+                this.teacher = teacherList.get(i);
+                bFound = true;
+                break;
+            }
+        }
+
+        if (!bFound) {
+            Teacher t = Teacher.create(teacherName, days, slotsPerDay);
+            this.teacher = t;
+            teacherList.add(t);
+        }
     }
 
     public String getName() {
@@ -78,11 +104,83 @@ public class Course {
         this.minOfStudents = minOfStudents;
     }
 
-    public void setCurriculum(Curriculum curriculum) {
-        this.curriculum = curriculum;
+    public void addCurriculum(Curriculum curriculum) {
+        this.curricula.add(curriculum);
     }
 
-    public void setAvailable(boolean bAvailable, int day, int slot) {
-        this.availability[day][slot] = bAvailable;
+    public ArrayList<Curriculum> getCurricula() {
+        return this.curricula;
+    }
+
+    public void setUnavailable(int day, int slot) {
+        if (this.unavailable[day][slot] == false) {
+            this.unavailable[day][slot] = true;
+            this.setConstraintLevel(this.getConstraintLevel() + 1);
+        }
+    }
+
+    public Teacher getTeacher() {
+        return this.teacher;
+    }
+
+    public boolean isUnavailable(Integer d, Integer s) {
+        return this.unavailable[d][s];
+    }
+
+    public ArrayList<Room> getShuffledRooms() {
+        return this.shuffledRooms;
+    }
+
+    public ArrayList<Lecture> getLectures() {
+        return this.lectures;
+    }
+
+    public int getConstraintLevel() {
+        return constraintLevel;
+    }
+
+    public void setConstraintLevel(int constraintLevel) {
+        this.constraintLevel = constraintLevel;
+    }
+
+    public void preprocessRooms(ArrayList<Room> roomList, Random rand) {
+        ArrayList<Room> bestRooms = new ArrayList<Room>();
+        ArrayList<Room> goodRooms = new ArrayList<Room>();
+        ArrayList<Room> badRooms = new ArrayList<Room>();
+
+        int bestDiff = Integer.MAX_VALUE;
+
+        for (Room r : roomList) {
+            int diff = r.getCapacity() - minOfStudents;
+
+            if (diff >= 0) {
+                if (diff < bestDiff) {
+                    goodRooms.addAll(bestRooms);
+                    bestRooms.clear();
+                    bestRooms.add(r);
+                } else if (diff == bestDiff) {
+                    bestRooms.add(r);
+                } else {
+                    goodRooms.add(r);
+                }
+            } else {
+                badRooms.add(r);
+            }
+        }
+
+        Collections.shuffle(bestRooms, rand);
+        shuffledRooms.addAll(bestRooms);
+
+        Collections.shuffle(goodRooms, rand);
+        shuffledRooms.addAll(goodRooms);
+
+        Collections.shuffle(badRooms, rand);
+        shuffledRooms.addAll(badRooms);
+    }
+
+    public void clearAssignments() {
+        for (Lecture l : lectures) {
+            l.clearAssignments();
+        }
     }
 }
