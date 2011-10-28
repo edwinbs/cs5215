@@ -55,14 +55,13 @@ public class Lecture implements Comparable {
             throw new UnsupportedOperationException("Incompatible types");
         }
 
-        int mine = this.getCourse().getConstraintLevel() + 10 * this.failureCount;
-        int yours = ((Lecture) t).getCourse().getConstraintLevel() + 10 * ((Lecture) t).failureCount;
+        return (this.getWeight() < ((Lecture) t).getWeight()) ? 1 : -1;
+    }
 
-        if (mine < yours) {
-            return 1;
-        } else {
-            return -1;
-        }
+    private int getWeight() {
+        return this.getCourse().getConstraintLevel()
+                + 10 * this.failureCount
+                + (this.getCourse().getMinOfStudents() / 10);
     }
 
     public boolean isCompatibleWith(Room r, Integer d, Integer s) {
@@ -105,5 +104,21 @@ public class Lecture implements Comparable {
         }
 
         this.getCourse().getTeacher().setUsed(b, day, timeSlot);
+
+        //Dynamic programming
+        this.getCourse().setWorkingDay(b, day);
+        this.getCourse().setRoomUsed(b, room);
+    }
+
+    public Room getRoom() {
+        return this.room;
+    }
+
+    public int getDay() {
+        return this.day;
+    }
+
+    public int getTimeSlot() {
+        return this.timeSlot;
     }
 }

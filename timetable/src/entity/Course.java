@@ -2,6 +2,7 @@ package entity;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Random;
 import java.util.StringTokenizer;
 
@@ -17,6 +18,10 @@ public class Course {
     private ArrayList<Lecture> lectures = new ArrayList<Lecture>();
     private ArrayList<Room> shuffledRooms = new ArrayList<Room>();
     private boolean[][] unavailable;
+    private int[] workingDays;
+    private int numWorkingDays = 0;
+    private HashMap<Room, Integer> roomUsageCountMap = new HashMap<Room, Integer>();
+    private int roomUsageCount = 0;
 
     public static Course create(String line,
             ArrayList<Teacher> teacherList, int days, int slotsPerDay) {
@@ -54,6 +59,7 @@ public class Course {
         this.minWorkingDay = minWorkingDay;
         this.minOfStudents = minOfStudents;
         this.unavailable = new boolean[days][slotsPerDay];
+        this.workingDays = new int[days];
 
         //For some reason using HashMap is more expensive than linear search!
         boolean bFound = false;
@@ -182,5 +188,45 @@ public class Course {
         for (Lecture l : lectures) {
             l.clearAssignments();
         }
+    }
+
+    void setWorkingDay(boolean b, int day) {
+        if (b) {
+            if (workingDays[day] == 0) {
+                ++numWorkingDays;
+            }
+            ++workingDays[day];
+        } else if (workingDays[day] > 0) {
+            --workingDays[day];
+            if (workingDays[day] == 0) {
+                --numWorkingDays;
+            }
+        }
+    }
+
+    public int getMinWorkingDaysCount() {
+        int diff = minWorkingDay - numWorkingDays;
+        return (diff > 0) ? diff : 0;
+    }
+
+    public void setRoomUsed(boolean b, Room r) {
+        Integer n = roomUsageCountMap.get(r);
+        if (b) {
+            if (n == null || n == 0) {
+                roomUsageCountMap.put(r, 1);
+                ++roomUsageCount;
+            } else {
+                roomUsageCountMap.put(r, n + 1);
+            }
+        } else if (n != null && n > 0) {
+            roomUsageCountMap.put(r, --n);
+            if (n == 0) {
+                --roomUsageCount;
+            }
+        }
+    }
+
+    public int getExcessRoomUsageCount() {
+        return (roomUsageCount > 1) ? roomUsageCount - 1 : 0;
     }
 }

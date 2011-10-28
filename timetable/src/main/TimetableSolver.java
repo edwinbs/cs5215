@@ -56,14 +56,27 @@ public class TimetableSolver {
     private ArrayList<Lecture> lectureList = new ArrayList<Lecture>();
     private ArrayList<Integer> daysChoice = new ArrayList<Integer>();
     private ArrayList<Integer> slotsChoice = new ArrayList<Integer>();
+    private Validator validator;
     private final int MAX_CONSTRUCTION_ITERS = 1000;
 
-    public TimetableSolver(String[] args) {
+    public boolean Initialize(String[] args) {
         try {
             input(args[0]);
+
+            for (int i = 1; i < args.length; ++i) {
+                if (args[i].equals("-s") || args[i].equals("--seed")) {
+                    rand.setSeed(Long.parseLong(args[i + 1]));
+                    ++i;
+                }
+            }
         } catch (IOException e) {
             System.out.printf("Failed to read file: %s\n", args[0]);
+            return false;
+        } catch (Exception e) {
+            System.out.printf("Usage: TimetableSolver <input-file> [options]\n");
+            return false;
         }
+        return true;
     }
 
     public void Solve() {
@@ -115,6 +128,7 @@ public class TimetableSolver {
                 break;
             }
         }
+        validator.calcInitialCost();
     }
 
     private void printSolution() {
@@ -123,6 +137,12 @@ public class TimetableSolver {
                 System.out.println(l);
             }
         }
+
+        //System.out.printf("Costs on room capacity: %d\n", validator.getRoomCapacityCost());
+        //System.out.printf("Costs on min working days: %d\n", validator.getMinWorkingDaysCost());
+        //System.out.printf("Costs on curriculum compactness: %d\n", validator.getCurriculumCompactnessCost());
+        //System.out.printf("Costs on room stability: %d\n", validator.getRoomStabilityCost());
+        //System.out.printf("TOTAL COSTS: %d\n", validator.getTotalCost());
     }
 
     private void input(String filename) throws IOException {
@@ -172,6 +192,8 @@ public class TimetableSolver {
         for (int i = 0; i < numOfConstraints; ++i) {
             Unavailability.updateCourse(in.readLine(), courseMap);
         }
+
+        validator = new Validator(courseMap.values(), curriculumList, roomList, teacherList, days, slotsPerDay);
 
         in.close();
     }

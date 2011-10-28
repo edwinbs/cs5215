@@ -8,7 +8,9 @@ public class main {
             System.exit(1);
         }
 
-        TimetableSolver instance = new TimetableSolver(args);
-        instance.Solve();
+        TimetableSolver instance = new TimetableSolver();
+        if (instance.Initialize(args)) {
+            instance.Solve();
+        }
     }
 }
