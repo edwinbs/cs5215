@@ -60,7 +60,7 @@ public class TimetableSolver {
     private Validator validator;
     private UndoManager undoManager = new UndoManager();
     private final int MAX_CONSTRUCTION_ITERS = 1000;
-    private final int MAX_HILL_CLIMBING_ITERS = 100000;
+    private final int MAX_HILL_CLIMBING_ITERS = 1000000;
 
     public boolean Initialize(String[] args) {
         try {
@@ -135,23 +135,35 @@ public class TimetableSolver {
     }
     
     private void hillClimbing() {
-        int successCount = 0;
         int cost = validator.calcInitialCost();
+        int waterLevel = (int) (cost * 1.01f);
+        int lowestCost = cost;
         for (int i=0; i < MAX_HILL_CLIMBING_ITERS; ++i) {
-            randomSwap();
+            int rn = rand.nextInt(3);
+            switch (rn) {
+                case 0:
+                    randomSwap();
+                    break;
+                case 1:
+                    randomTimeMove();
+                    break;
+                case 2:
+                    randomRoomMove();
+                    break;
+            }
             
             int newCost = validator.calcInitialCost();
-            if (newCost > cost) {
+            if (newCost > waterLevel) {
                 undoManager.UndoAll();
             } else {
-                if (newCost < cost) {
-                    ++successCount;
-                    cost = newCost;
+                if (newCost < lowestCost) {
+                    waterLevel = (int) (newCost * 1.01f);
+                    lowestCost = newCost;
                 }
+                cost = newCost;
                 undoManager.ClearHistory();
             }
         }
-        System.out.printf("Success count=%d\n", successCount);
     }
     
     private void randomSwap() {
@@ -171,6 +183,58 @@ public class TimetableSolver {
     private boolean swap(Lecture lec1, Lecture lec2) {
         if (lec1.canSwap(lec2) && lec2.canSwap(lec1)) {
             undoManager.Swap(lec1, lec2);
+            return true;
+        }
+        return false;
+    }
+    
+    private void randomTimeMove() {
+        Collections.shuffle(lectureList, rand);
+        Collections.shuffle(daysChoice, rand);
+        Collections.shuffle(slotsChoice, rand);
+        
+        for (int i=0; i<lectureList.size(); ++i) {
+            Lecture lec = lectureList.get(i);
+
+            for (int d = 0; d < daysChoice.size(); ++d) {
+                for (int s = 0; s < slotsChoice.size(); ++s) {
+                    if (lec.getDay() != d || lec.getTimeSlot() != s) {
+                        if (timeMove(lec, d, s))
+                            return;
+                    }
+                }
+            }
+        }
+    }
+    
+    private boolean timeMove(Lecture lec, int day, int timeSlot) {
+        if (lec.isCompatibleWith(lec.getRoom(), day, timeSlot)) {
+            undoManager.Move(lec, lec.getRoom(), day, timeSlot);
+            return true;
+        }
+        return false;
+    }
+    
+    private void randomRoomMove() {
+        Collections.shuffle(lectureList, rand);
+        Collections.shuffle(roomList, rand);
+        
+        for (int i=0; i<lectureList.size(); ++i) {
+            Lecture lec = lectureList.get(i);
+            
+            for (int j=0; j<roomList.size(); ++j) {
+                Room r = roomList.get(j);
+                if (r != lec.getRoom()) {
+                    if (roomMove(lec, r))
+                        return;
+                }
+            }
+        }
+    }
+    
+    private boolean roomMove(Lecture lec, Room r) {
+        if (lec.isCompatibleWith(r, lec.getDay(), lec.getTimeSlot())) {
+            undoManager.Move(lec, r, lec.getDay(), lec.getTimeSlot());
             return true;
         }
         return false;

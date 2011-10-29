@@ -5,17 +5,12 @@ import entity.Room;
 import java.util.ArrayList;
 
 
+
 public class UndoManager {
     private ArrayList<IUndoableAction> history = new ArrayList<IUndoableAction>();
     
     public void MakeAssignment(Lecture l, Room r, int day, int timeSlot) {
         AssignmentAction action = AssignmentAction.create(l, r, day, timeSlot);
-        history.add(action);
-        action.execute();
-    }
-    
-    public void Swap(Lecture lec1, Lecture lec2) {
-        SwapAction action = SwapAction.create(lec1, lec2);
         history.add(action);
         action.execute();
     }
@@ -30,8 +25,19 @@ public class UndoManager {
     public void ClearHistory() {
         history.clear();
     }
-}
+    
+    public void Swap(Lecture lec1, Lecture lec2) {
+        SwapAction action = SwapAction.create(lec1, lec2);
+        history.add(action);
+        action.execute();
+    }
 
+    public void Move(Lecture lec, Room room, int day, int timeSlot) {
+        AssignmentAction action = AssignmentAction.create(lec, room, day, timeSlot);
+        history.add(action);
+        action.execute();
+    }
+}
 interface IUndoableAction {
     public void execute();
     public void rollBack();
