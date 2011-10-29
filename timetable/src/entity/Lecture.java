@@ -86,6 +86,25 @@ public class Lecture implements Comparable {
 
         return true;
     }
+    
+    public boolean canSwap(Lecture lec2) {
+        if (getCourse().getTeacher().IsUsed(lec2.getDay(), lec2.getTimeSlot())) {
+            return false;
+        }
+        
+        if (getCourse().isUnavailable(lec2.getDay(), lec2.getTimeSlot())) {
+            return false;
+        }
+        
+        ArrayList<Curriculum> curricula = getCourse().getCurricula();
+        for (int i = 0; i < curricula.size(); ++i) {
+            if (curricula.get(i).isUsed(lec2.getDay(), lec2.getTimeSlot())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     public void clearAssignments() {
         setUsed(false);
@@ -120,5 +139,16 @@ public class Lecture implements Comparable {
 
     public int getTimeSlot() {
         return this.timeSlot;
+    }
+
+    public boolean isRoomLargeEnough() {
+        return this.getRoom().getCapacity() >= this.getCourse().getMinOfStudents();
+    }
+
+    public boolean isRoomNotWorse(Room room) {
+        if (room.getCapacity() >= this.getCourse().getMinOfStudents())
+            return true;
+        
+        return room.getCapacity() >= this.getRoom().getCapacity();
     }
 }

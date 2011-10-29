@@ -78,7 +78,7 @@ public class Validator {
     private int calcInitialRoomStabilityCost() {
         roomStabilityCost = 0;
         for (Course c : courseList) {
-            roomStabilityCost += c.getExcessRoomUsageCount();
+            roomStabilityCost += c.getRoomStabilityPenalty();
         }
         return getRoomStabilityCost();
     }

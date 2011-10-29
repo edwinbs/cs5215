@@ -50,6 +50,7 @@ public class TimetableSolver {
     private int numOfCurricula;
     private int numOfConstraints;
     private HashMap<String, Course> courseMap = new HashMap<String, Course>();
+    private ArrayList<Course> courseList = new ArrayList<Course>();
     private ArrayList<Teacher> teacherList = new ArrayList<Teacher>();
     private ArrayList<Room> roomList = new ArrayList<Room>();
     private ArrayList<Curriculum> curriculumList = new ArrayList<Curriculum>();
@@ -57,7 +58,9 @@ public class TimetableSolver {
     private ArrayList<Integer> daysChoice = new ArrayList<Integer>();
     private ArrayList<Integer> slotsChoice = new ArrayList<Integer>();
     private Validator validator;
+    private UndoManager undoManager = new UndoManager();
     private final int MAX_CONSTRUCTION_ITERS = 1000;
+    private final int MAX_HILL_CLIMBING_ITERS = 100000;
 
     public boolean Initialize(String[] args) {
         try {
@@ -82,6 +85,7 @@ public class TimetableSolver {
     public void Solve() {
         preprocessRooms();
         initialConstruction();
+        hillClimbing();
         printSolution();
     }
 
@@ -128,7 +132,48 @@ public class TimetableSolver {
                 break;
             }
         }
-        validator.calcInitialCost();
+    }
+    
+    private void hillClimbing() {
+        int successCount = 0;
+        int cost = validator.calcInitialCost();
+        for (int i=0; i < MAX_HILL_CLIMBING_ITERS; ++i) {
+            randomSwap();
+            
+            int newCost = validator.calcInitialCost();
+            if (newCost > cost) {
+                undoManager.UndoAll();
+            } else {
+                if (newCost < cost) {
+                    ++successCount;
+                    cost = newCost;
+                }
+                undoManager.ClearHistory();
+            }
+        }
+        System.out.printf("Success count=%d\n", successCount);
+    }
+    
+    private void randomSwap() {
+        Collections.shuffle(lectureList, rand);
+        for (int i=0; i<lectureList.size(); ++i) {
+            Lecture lec1 = lectureList.get(i);
+            for (int j=0; j<lectureList.size(); ++j) {
+                Lecture lec2 = lectureList.get(j);
+                if (lec1.getCourse() != lec2.getCourse()) {
+                    if (swap(lec1, lec2))
+                        return;
+                }
+            }
+        }
+    }
+    
+    private boolean swap(Lecture lec1, Lecture lec2) {
+        if (lec1.canSwap(lec2) && lec2.canSwap(lec1)) {
+            undoManager.Swap(lec1, lec2);
+            return true;
+        }
+        return false;
     }
 
     private void printSolution() {
@@ -137,12 +182,6 @@ public class TimetableSolver {
                 System.out.println(l);
             }
         }
-
-        //System.out.printf("Costs on room capacity: %d\n", validator.getRoomCapacityCost());
-        //System.out.printf("Costs on min working days: %d\n", validator.getMinWorkingDaysCost());
-        //System.out.printf("Costs on curriculum compactness: %d\n", validator.getCurriculumCompactnessCost());
-        //System.out.printf("Costs on room stability: %d\n", validator.getRoomStabilityCost());
-        //System.out.printf("TOTAL COSTS: %d\n", validator.getTotalCost());
     }
 
     private void input(String filename) throws IOException {
@@ -170,6 +209,7 @@ public class TimetableSolver {
             Course c = Course.create(in.readLine(), teacherList, days, slotsPerDay);
             courseMap.put(c.getName(), c);
         }
+        courseList.addAll(courseMap.values());
 
         //read ROOMS information
         in.skipLine(1);

@@ -226,7 +226,7 @@ public class Course {
         }
     }
 
-    public int getExcessRoomUsageCount() {
+    public int getRoomStabilityPenalty() {
         return (roomUsageCount > 1) ? roomUsageCount - 1 : 0;
     }
 }
