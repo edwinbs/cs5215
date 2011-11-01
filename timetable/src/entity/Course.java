@@ -242,4 +242,8 @@ public class Course {
         }
         return majorityRoom;
     }
+
+    public int getNumOfLecturesForDay(int day) {
+        return workingDays[day];
+    }
 }
