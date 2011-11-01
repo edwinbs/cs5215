@@ -13,8 +13,11 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Random;
+import java.util.Timer;
+import java.util.TimerTask;
 
 class SkippingBufferedReader extends BufferedReader {
 
@@ -61,14 +64,22 @@ public class TimetableSolver {
     private UndoManager undoManager = new UndoManager();
     private final int MAX_CONSTRUCTION_ITERS = 1000;
     private final int MAX_HILL_CLIMBING_ITERS = 1000000;
+    private final int DEFAULT_TIMEOUT = 375;
+    private int timeoutSecs = 0;
+    private volatile boolean stopFlag = false;
 
     public boolean Initialize(String[] args) {
         try {
             input(args[0]);
 
+            timeoutSecs = DEFAULT_TIMEOUT;
+
             for (int i = 1; i < args.length; ++i) {
                 if (args[i].equals("-s") || args[i].equals("--seed")) {
                     rand.setSeed(Long.parseLong(args[i + 1]));
+                    ++i;
+                } else if (args[i].equals("-t") || args[i].equals("--timeout")) {
+                    timeoutSecs = Integer.parseInt(args[i+1]);
                     ++i;
                 }
             }
@@ -83,10 +94,15 @@ public class TimetableSolver {
     }
 
     public void Solve() {
+        Timer t = new Timer();
+        t.schedule(new TimeLimitter(), timeoutSecs * 1000);
+
         preprocessRooms();
         initialConstruction();
         hillClimbing();
         printSolution();
+
+        t.cancel();
     }
 
     private void preprocessRooms() {
@@ -102,7 +118,7 @@ public class TimetableSolver {
     }
 
     private void initialConstruction() {
-        for (int i = 0; i < MAX_CONSTRUCTION_ITERS; ++i) {
+        for (int i = 0; (i < MAX_CONSTRUCTION_ITERS) && !stopFlag; ++i) {
             boolean isFailed = false;
             clearAssignments();
             Collections.sort(lectureList);
@@ -136,10 +152,10 @@ public class TimetableSolver {
     
     private void hillClimbing() {
         int cost = validator.calcInitialCost();
-        int waterLevel = (int) (cost * 1.01f);
+        int waterLevel = (int) (cost * 1.02f);
         int lowestCost = cost;
-        for (int i=0; i < MAX_HILL_CLIMBING_ITERS; ++i) {
-            int rn = rand.nextInt(3);
+        while (!stopFlag) {
+            int rn = rand.nextInt(4);
             switch (rn) {
                 case 0:
                     randomSwap();
@@ -150,6 +166,9 @@ public class TimetableSolver {
                 case 2:
                     randomRoomMove();
                     break;
+                case 3:
+                    randomRoomStabilityMove();
+                    break;
             }
             
             int newCost = validator.calcInitialCost();
@@ -157,7 +176,7 @@ public class TimetableSolver {
                 undoManager.UndoAll();
             } else {
                 if (newCost < lowestCost) {
-                    waterLevel = (int) (newCost * 1.01f);
+                    waterLevel = (int) (newCost * 1.02f);
                     lowestCost = newCost;
                 }
                 cost = newCost;
@@ -240,6 +259,54 @@ public class TimetableSolver {
         return false;
     }
 
+    private void randomRoomStabilityMove() {
+        Collections.shuffle(courseList, rand);
+
+        for (int i=0; i<courseList.size(); ++i) {
+            Course c = courseList.get(i);
+            if (c.getRoomStabilityPenalty() > 0) {
+                if (roomStabilityMove(c))
+                    return;
+            }
+        }
+    }
+
+    private boolean roomStabilityMove(Course c) {
+        Room r = c.getMajorityRoom();
+        if (r == null)
+            return false;
+
+        boolean isSuccess = false;
+
+        lecture_loop:
+        for (Lecture lec : c.getLectures()) {
+            if (lec.getRoom() == r)
+                continue;
+
+            Collections.shuffle(daysChoice, rand);
+            Collections.shuffle(slotsChoice, rand);
+
+            for (int d = 0; d < daysChoice.size(); ++d) {
+                for (int s = 0; s < slotsChoice.size(); ++s) {
+                    if (lec.isCompatibleWith(r, daysChoice.get(d), slotsChoice.get(s))) {
+                        move(lec, r, daysChoice.get(d), slotsChoice.get(s));
+                        isSuccess = true;
+                        continue lecture_loop;
+                    }
+                }
+            }
+        }
+        return isSuccess;
+    }
+
+    private boolean move(Lecture lec, Room r, int day, int timeSlot) {
+        if (lec.isCompatibleWith(r, day, timeSlot)) {
+            undoManager.Move(lec, r, day, timeSlot);
+            return true;
+        }
+        return false;
+    }
+
     private void printSolution() {
         for (Course c : courseMap.values()) {
             for (Lecture l : c.getLectures()) {
@@ -300,5 +367,14 @@ public class TimetableSolver {
         validator = new Validator(courseMap.values(), curriculumList, roomList, teacherList, days, slotsPerDay);
 
         in.close();
+    }
+
+    class TimeLimitter extends TimerTask {
+
+        @Override
+        public void run() {
+            stopFlag = true;
+        }
+
     }
 }

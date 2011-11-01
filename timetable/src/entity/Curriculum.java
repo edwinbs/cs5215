@@ -76,7 +76,7 @@ public class Curriculum {
         return this.used[d][s];
     }
 
-    public int getIsolatedLecturesCount() {
+    public int getIsolatedLecturesCost() {
         int isolatedLecturesCount = 0;
         for (int d = 0; d < days; ++d) {
             for (int s = 0; s < slotsPerDay; ++s) {
@@ -86,6 +86,6 @@ public class Curriculum {
             }
         }
 
-        return isolatedLecturesCount;
+        return isolatedLecturesCount * 2;
     }
 }

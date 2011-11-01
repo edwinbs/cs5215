@@ -204,9 +204,9 @@ public class Course {
         }
     }
 
-    public int getMinWorkingDaysCount() {
+    public int getMinWorkingDaysCost() {
         int diff = minWorkingDay - numWorkingDays;
-        return (diff > 0) ? diff : 0;
+        return (diff > 0) ? diff * 5 : 0;
     }
 
     public void setRoomUsed(boolean b, Room r) {
@@ -228,5 +228,18 @@ public class Course {
 
     public int getRoomStabilityPenalty() {
         return (roomUsageCount > 1) ? roomUsageCount - 1 : 0;
+    }
+
+    public Room getMajorityRoom() {
+        int max = 0;
+        Room majorityRoom = null;
+        for (Room r : roomUsageCountMap.keySet()) {
+            int count = roomUsageCountMap.get(r);
+            if (count > max) {
+                max = count;
+                majorityRoom = r;
+            }
+        }
+        return majorityRoom;
     }
 }

@@ -6,7 +6,7 @@ public class Room {
 
     private String name;
     private int capacity;
-    private boolean[][] used;
+    private Lecture[][] user;
 
     public static Room create(String line, int days, int slotsPerDay) {
         StringTokenizer strTok = new StringTokenizer(line);
@@ -17,7 +17,7 @@ public class Room {
         super();
         this.name = name;
         this.capacity = capacity;
-        this.used = new boolean[days][slotsPerDay];
+        this.user = new Lecture[days][slotsPerDay];
     }
 
     public String getName() {
@@ -36,12 +36,16 @@ public class Room {
         this.capacity = capacity;
     }
 
-    public void setUsed(boolean b, int d, int s) {
-        this.used[d][s] = b;
+    public void setUsed(Lecture lec, int d, int s) {
+        this.user[d][s] = lec;
     }
 
     public boolean isUsed(Integer d, Integer s) {
-        return this.used[d][s];
+        return (this.user[d][s] != null);
+    }
+
+    public Lecture getUser(int d, int s) {
+        return this.user[d][s];
     }
 
     @Override

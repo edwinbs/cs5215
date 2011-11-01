@@ -49,10 +49,7 @@ public class Validator {
         roomCapacityCost = 0;
         for (Course c : courseList) {
             for (Lecture l : c.getLectures()) {
-                int diff = l.getCourse().getMinOfStudents() - l.getRoom().getCapacity();
-                if (diff > 0) {
-                    roomCapacityCost += diff;
-                }
+                roomCapacityCost += l.getRoomCapacityCost();
             }
         }
         return getRoomCapacityCost();
@@ -61,7 +58,7 @@ public class Validator {
     private int calcInitialMinWorkingDaysCost() {
         minWorkingDaysCost = 0;
         for (Course c : courseList) {
-            minWorkingDaysCost += c.getMinWorkingDaysCount() * 5;
+            minWorkingDaysCost += c.getMinWorkingDaysCost();
         }
 
         return getMinWorkingDaysCost();
@@ -70,7 +67,7 @@ public class Validator {
     private int calcInitialCurriculumCompactnessCost() {
         curriculumCompactnessCost = 0;
         for (Curriculum c : curriculumList) {
-            curriculumCompactnessCost += c.getIsolatedLecturesCount() * 2;
+            curriculumCompactnessCost += c.getIsolatedLecturesCost();
         }
         return getCurriculumCompactnessCost();
     }

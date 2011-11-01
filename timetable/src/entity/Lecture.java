@@ -119,7 +119,7 @@ public class Lecture implements Comparable {
         }
 
         if (room != null) {
-            room.setUsed(b, day, timeSlot);
+            room.setUsed(b ? this : null, day, timeSlot);
         }
 
         this.getCourse().getTeacher().setUsed(b, day, timeSlot);
@@ -150,5 +150,21 @@ public class Lecture implements Comparable {
             return true;
         
         return room.getCapacity() >= this.getRoom().getCapacity();
+    }
+    
+    public int getRoomCapacityCost() {
+        int diff = this.getCourse().getMinOfStudents() - this.getRoom().getCapacity();
+        return (diff > 0) ? diff : 0;
+    }
+
+    public int getSoftConstraintCost() {
+        int cost = 0;
+        cost += this.getRoomCapacityCost();
+        cost += this.getCourse().getMinWorkingDaysCost();
+        cost += this.getCourse().getRoomStabilityPenalty();
+        for (Curriculum cur : this.getCourse().getCurricula()) {
+            cost += cur.getIsolatedLecturesCost();
+        }
+        return cost;
     }
 }
