@@ -35,7 +35,7 @@ public class Validator {
 
     }
 
-    public int calcInitialCost() {
+    public int calcCost() {
         calcInitialRoomCapacityCost();
         calcInitialMinWorkingDaysCost();
         calcInitialCurriculumCompactnessCost();

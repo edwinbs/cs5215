@@ -1,15 +1,32 @@
 package entity;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 
-public class Lecture implements Comparable {
+class LectureSnapshot {
+    Room room;
+    int day;
+    int timeSlot;
+    int failureCount;
+    
+    public LectureSnapshot(Room room, int day, int timeSlot, int failureCount) {
+        this.room = room;
+        this.day = day;
+        this.timeSlot = timeSlot;
+        this.failureCount = failureCount;
+    }
+}
+
+public class Lecture implements Comparable, Restorable {
 
     private String courseName = "";
     private Course course;
-    private Room room;
-    private int day;
-    private int timeSlot;
-    private int failureCount;
+    private Room room; //TODO: Needs snapshot
+    private int day; //TODO: Needs snapshot
+    private int timeSlot; //TODO: Needs snapshot
+    private int failureCount; //TODO: Needs snapshot
+    
+    private HashMap<Integer, LectureSnapshot> snapshots = new HashMap<Integer, LectureSnapshot>();
 
     public static Lecture create(String courseName) {
         return new Lecture(courseName);
@@ -166,5 +183,56 @@ public class Lecture implements Comparable {
             cost += cur.getIsolatedLecturesCost();
         }
         return cost;
+    }
+    
+    public boolean canbePutAdjacentWithNewRoom(Lecture oneWithNeighbor,Room newRoom,int slotPerday)
+    {
+    	if (oneWithNeighbor.getTimeSlot()-1>=0 )
+    	{
+    		//System.out.println("CHECK: room, new day and new slot = "+newRoom.getName()+" & "+oneWithNeighbor.getDay()+" & "+(oneWithNeighbor.getTimeSlot()-1));
+    		if (isCompatibleWith(newRoom, oneWithNeighbor.getDay(), oneWithNeighbor.getTimeSlot()-1))
+    			return true;
+    	}
+    	
+    	if ((oneWithNeighbor.getTimeSlot()+1)<=(slotPerday-1) )
+    	{
+    		//System.out.println("CHECK: room, new day and new slot = "+newRoom.getName()+" & "+oneWithNeighbor.getDay()+" & "+(oneWithNeighbor.getTimeSlot()+1));
+    		if (isCompatibleWith(newRoom, oneWithNeighbor.getDay(), oneWithNeighbor.getTimeSlot()+1))
+    			return true;
+    	}
+    	
+    	return false;
+    }
+    public boolean canbePutAdjacentWithSameRoom(Lecture oneWithNeighbor,int slotPerday){
+    	
+    	if (oneWithNeighbor.getTimeSlot()-1>=0 && getRoom() != oneWithNeighbor.getRoom())
+    	{
+    		if (isCompatibleWith(getRoom(), oneWithNeighbor.getDay(), oneWithNeighbor.getTimeSlot()-1))
+    			return true;
+    	}
+    	
+    	if ((oneWithNeighbor.getTimeSlot()+1)<=(slotPerday-1) && getRoom() != oneWithNeighbor.getRoom())
+    	{
+    		if (isCompatibleWith(getRoom(), oneWithNeighbor.getDay(), oneWithNeighbor.getTimeSlot()+1))
+    			return true;
+    	}
+    	
+    	return false;
+    }
+
+    @Override
+    public void takeSnapshot(int snapshotType) {
+        snapshots.put(snapshotType, new LectureSnapshot(this.room, this.day, this.timeSlot, this.failureCount));
+    }
+
+    @Override
+    public void restoreSnapshot(int snapshotType) {
+        LectureSnapshot snapshot = snapshots.get(snapshotType);
+        if (snapshot != null) {
+            this.room = snapshot.room;
+            this.day = snapshot.day;
+            this.timeSlot = snapshot.timeSlot;
+            this.failureCount = snapshot.failureCount;
+        }
     }
 }

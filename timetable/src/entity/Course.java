@@ -6,22 +6,48 @@ import java.util.HashMap;
 import java.util.Random;
 import java.util.StringTokenizer;
 
-public class Course {
+class CourseSnapshot {
+
+    int constraintLevel;
+    int[] workingDays;
+    int numWorkingDays;
+    HashMap<Room, Integer> roomUsageCountMap;
+    int roomUsageCount;
+
+    public CourseSnapshot(int constraintLevel, int[] workingDays,
+            int numWorkingDays, HashMap<Room, Integer> roomUsageCountMap,
+            int roomUsageCount) {
+
+        this.constraintLevel = constraintLevel;
+        this.numWorkingDays = numWorkingDays;
+        this.roomUsageCount = roomUsageCount;
+
+        this.workingDays = new int[workingDays.length];
+        System.arraycopy(workingDays, 0, this.workingDays, 0, workingDays.length);
+
+        this.roomUsageCountMap = new HashMap<Room, Integer>();
+        this.roomUsageCountMap.putAll(roomUsageCountMap);
+    }
+}
+
+public class Course implements Restorable {
 
     private String name;
     private Teacher teacher;
     private int numOfLectures;
     private int minWorkingDay;
     private int minOfStudents;
-    private int constraintLevel;
+    private int constraintLevel; //TODO: Needs snapshot
     private ArrayList<Curriculum> curricula = new ArrayList<Curriculum>();
     private ArrayList<Lecture> lectures = new ArrayList<Lecture>();
     private ArrayList<Room> shuffledRooms = new ArrayList<Room>();
     private boolean[][] unavailable;
-    private int[] workingDays;
-    private int numWorkingDays = 0;
-    private HashMap<Room, Integer> roomUsageCountMap = new HashMap<Room, Integer>();
-    private int roomUsageCount = 0;
+    private int[] workingDays; //TODO: Needs snapshot
+    private int numWorkingDays = 0; //TODO: Needs snapshot
+    private HashMap<Room, Integer> roomUsageCountMap = new HashMap<Room, Integer>(); //TODO: Needs snapshot
+    private int roomUsageCount = 0; //TODO: Needs snapshot
+    
+    private HashMap<Integer, CourseSnapshot> snapshots = new HashMap<Integer, CourseSnapshot>();
 
     public static Course create(String line,
             ArrayList<Teacher> teacherList, int days, int slotsPerDay) {
@@ -245,5 +271,67 @@ public class Course {
 
     public int getNumOfLecturesForDay(int day) {
         return workingDays[day];
+    }
+
+    
+    public Lecture getLectureForSlot(int day,int slot){
+    	
+    	for (int j=0;j<lectures.size();++j)
+    	{
+    		Lecture l = lectures.get(j);
+    		
+    		if (l.getDay()==day && l.getTimeSlot()==slot)
+    			return l;
+    	}
+    	
+    	return null;
+    }
+    
+    public ArrayList<Integer> getWorkingDays(){
+    	ArrayList<Integer> workingDaysList = new ArrayList<Integer>();   	
+    	for (int j=0;j<workingDays.length;++j)
+    		if (workingDays[j]>0)
+    			workingDaysList.add(j);
+    	Collections.shuffle(workingDaysList);
+    	return workingDaysList;
+    }
+    
+    public ArrayList<Integer> getNonWorkingDays(){
+    	ArrayList<Integer> NonWorkingDaysList = new ArrayList<Integer>();  	    	
+    	for (int j=0;j<workingDays.length;++j)
+    		if (workingDays[j]==0)
+    			NonWorkingDaysList.add(j);
+    	Collections.shuffle(NonWorkingDaysList);
+    	return NonWorkingDaysList;
+    }
+    
+    public Lecture getRandomLecture(){
+    	Random rand = new Random();
+    	int rn = rand.nextInt(lectures.size());
+    	
+    	return lectures.get(rn);	
+    }    
+    
+    @Override
+    public void takeSnapshot(int snapshotType) {
+        snapshots.put(snapshotType, new CourseSnapshot(this.constraintLevel,
+                this.workingDays, this.numWorkingDays, this.roomUsageCountMap,
+                this.roomUsageCount));
+    }
+
+    @Override
+    public void restoreSnapshot(int snapshotType) {
+        CourseSnapshot snapshot = snapshots.get(snapshotType);
+        if (snapshot != null) {
+            this.constraintLevel = snapshot.constraintLevel;
+            this.numWorkingDays = snapshot.numWorkingDays;
+            this.roomUsageCount = snapshot.roomUsageCount;
+
+            this.workingDays = new int[snapshot.workingDays.length];
+            System.arraycopy(snapshot.workingDays, 0, this.workingDays, 0, snapshot.workingDays.length);
+
+            this.roomUsageCountMap = new HashMap<Room, Integer>();
+            this.roomUsageCountMap.putAll(snapshot.roomUsageCountMap);
+        }
     }
 }

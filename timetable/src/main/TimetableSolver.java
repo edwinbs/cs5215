@@ -4,6 +4,7 @@ import entity.Unavailability;
 import entity.Course;
 import entity.Curriculum;
 import entity.Lecture;
+import entity.Restorable;
 import entity.Room;
 
 import entity.Teacher;
@@ -62,7 +63,6 @@ public class TimetableSolver {
     private Validator validator;
     private UndoManager undoManager = new UndoManager();
     private final int MAX_CONSTRUCTION_ITERS = 1000;
-    private final int MAX_HILL_CLIMBING_ITERS = 1000000;
     private final int DEFAULT_TIMEOUT = 375;
     private int timeoutSecs = 0;
     private volatile boolean stopFlag = false;
@@ -96,9 +96,32 @@ public class TimetableSolver {
         Timer t = new Timer();
         t.schedule(new TimeLimitter(), timeoutSecs * 1000);
 
+        int best = Integer.MAX_VALUE;
+        int bestInitialConstruction = Integer.MAX_VALUE;
+
+        int hillClimbings = 0;
+
         preprocessRooms();
-        initialConstruction();
-        hillClimbing();
+        takeSnapshot(Restorable.ST_BLANK);
+        int iters = 0;
+        while (!stopFlag) {
+            restoreSnapshot(Restorable.ST_BLANK);
+            if (initialConstruction()) {
+                int initialConstructionCost = validator.calcCost();
+                if (initialConstructionCost < bestInitialConstruction * 1.1f) {
+                    bestInitialConstruction = initialConstructionCost;
+                    hillClimbing(50000);
+                    ++hillClimbings;
+                    int cost = validator.calcCost();
+                    if (cost < best) {
+                        best = cost;
+                        takeSnapshot(Restorable.ST_MASTER);
+                    }
+                }
+            }
+            ++iters;
+        }
+        restoreSnapshot(Restorable.ST_MASTER);
         printSolution();
 
         t.cancel();
@@ -116,7 +139,7 @@ public class TimetableSolver {
         }
     }
 
-    private void initialConstruction() {
+    private boolean initialConstruction() {
         for (int i = 0; (i < MAX_CONSTRUCTION_ITERS) && !stopFlag; ++i) {
             boolean isFailed = false;
             clearAssignments();
@@ -144,20 +167,22 @@ public class TimetableSolver {
             }
 
             if (!isFailed) {
-                break;
+                return true;
             }
         }
+        return false;
     }
 
-    private void hillClimbing() {
-        int cost = validator.calcInitialCost();
-        int waterLevel = (int) (cost * 1.02f);
+    private void hillClimbing(int maxIterations) {
+        int cost = validator.calcCost();
+        int waterLevel = (int) (cost * 1.01f);
         int lowestCost = cost;
-        while (!stopFlag) {
+        takeSnapshot(Restorable.ST_CANDIDATE);
+        while (maxIterations-- > 0 && !stopFlag) {
             int rn = rand.nextInt(5);
             switch (rn) {
                 case 0:
-                    randomSwap();
+                    randomLectureMove();
                     break;
                 case 1:
                     randomTimeMove();
@@ -171,35 +196,70 @@ public class TimetableSolver {
                 case 4:
                     minWorkingDaysMove();
                     break;
+                case 5:
+                    curriculumCompactnessMove();
+                    break;
             }
 
-            int newCost = validator.calcInitialCost();
+            int newCost = validator.calcCost();
             if (newCost > waterLevel) {
-                undoManager.UndoAll();
+                restoreSnapshot(Restorable.ST_CANDIDATE);
             } else {
                 if (newCost < lowestCost) {
-                    waterLevel = (int) (newCost * 1.02f);
+                    waterLevel = (int) (newCost * 1.01f);
                     lowestCost = newCost;
                 }
                 cost = newCost;
+                takeSnapshot(Restorable.ST_CANDIDATE);
                 undoManager.ClearHistory();
             }
         }
     }
 
-    private void randomSwap() {
+    private void randomLectureMove() {
         Collections.shuffle(lectureList, rand);
+        Collections.shuffle(daysChoice, rand);
+        Collections.shuffle(slotsChoice, rand);
+        Collections.shuffle(roomList, rand);
+
         for (int i = 0; i < lectureList.size(); ++i) {
-            Lecture lec1 = lectureList.get(i);
-            for (int j = 0; j < lectureList.size(); ++j) {
-                Lecture lec2 = lectureList.get(j);
-                if (lec1.getCourse() != lec2.getCourse()) {
-                    if (swap(lec1, lec2)) {
-                        return;
+            Lecture lec = lectureList.get(i);
+
+            for (int j = 0; j < roomList.size(); ++j) {
+                Room r = roomList.get(j);
+                if (r != lec.getRoom()) {//if new ROOM
+                    for (int d = 0; d < daysChoice.size(); ++d) {
+                        for (int s = 0; s < slotsChoice.size(); ++s) {
+                            if (lec.getDay() != d || lec.getTimeSlot() != s) {
+                                //DO LECTURE MOVE HERE
+
+                                if (lectureMove(lec, r, d, s)) {
+                                    return;
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    private boolean lectureMove(Lecture lec, Room room, int day, int timeSlot) {
+
+        if (lec.isCompatibleWith(room, day, timeSlot)) {//if compatible with the new room and new timeslot
+            undoManager.Move(lec, room, day, timeSlot);
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean move(Lecture lec, Room r, int day, int timeSlot) {
+        if (lec.isCompatibleWith(r, day, timeSlot)) {
+            undoManager.Move(lec, r, day, timeSlot);
+            return true;
+        }
+        return false;
     }
 
     private boolean swap(Lecture lec1, Lecture lec2) {
@@ -266,93 +326,139 @@ public class TimetableSolver {
 
     private void randomRoomStabilityMove() {
         Collections.shuffle(courseList, rand);
-
+        int penalty;
         for (int i = 0; i < courseList.size(); ++i) {
             Course c = courseList.get(i);
             if (c.getRoomStabilityPenalty() > 0) {
-                if (roomStabilityMove(c)) {
+                penalty = c.getRoomStabilityPenalty();
+                roomStabilityMove_new(c);
+                return;
+            }
+        }
+    }
+
+    private void roomStabilityMove_new(Course c) {
+        Collections.shuffle(roomList, rand);
+
+        Room r = roomList.get(0);//randomly get a new ROOM
+        for (Lecture lec : c.getLectures()) {
+            if (lec.getRoom() == r) {
+                continue;
+            }
+            int day = lec.getDay();
+            int slot = lec.getTimeSlot();
+            if (!r.isUsed(day, slot)) {
+                moveToRoom(lec, r);
+                continue;
+            }
+
+            Lecture anotherLec = r.getUser(day, slot);
+            if (anotherLec != null) {
+                undoManager.SwapRoom(lec, anotherLec);
+            }
+        }
+    }
+
+    private void moveToRoom(Lecture l, Room r) {
+        undoManager.MoveLectureToNewRoom(l, r);
+    }
+
+    private void minWorkingDaysMove() {
+        Collections.shuffle(courseList, rand);
+
+        for (int i = 0; i < courseList.size(); ++i) {
+            Course course = courseList.get(i);
+            if (course.getMinWorkingDaysCost() > 0) {
+                Lecture randomLecture = course.getRandomLecture();
+                ArrayList<Integer> nonWorkingDays = course.getNonWorkingDays();
+                if (nonWorkingDays.size() > 0) {
+                    int nonWorkingDay = nonWorkingDays.get(0);//considered as RANDOM since already SHUFFLE
+                    Random rand = new Random();
+                    int rnSlot = rand.nextInt(slotsPerDay);
+
+                    if (randomLecture.isCompatibleWith(randomLecture.getRoom(), nonWorkingDay, rnSlot)) {
+                        undoManager.MoveLectureToAnotherSlot(randomLecture, nonWorkingDay, rnSlot);
+                        return;
+                    }
+                } else {
                     return;
                 }
             }
         }
     }
 
-    private boolean roomStabilityMove(Course c) {
-        Room r = c.getMajorityRoom();
-        if (r == null) {
-            return false;
-        }
+    private void curriculumCompactnessMove() {
 
-        boolean isSuccess = false;
+        Collections.shuffle(curriculumList, rand);
+        for (int i = 0; i < curriculumList.size(); ++i) {
+            Curriculum cur = curriculumList.get(i);
 
-        lecture_loop:
-        for (Lecture lec : c.getLectures()) {
-            if (lec.getRoom() == r) {
-                continue;
-            }
+            ArrayList<Lecture> IsolatedLectures = cur.getIsolatedLectures();
+            ArrayList<Lecture> hasNeighborsLectures = cur.getHasNeighborLectures();
 
-            Collections.shuffle(daysChoice, rand);
-            Collections.shuffle(slotsChoice, rand);
-
-            for (int d = 0; d < daysChoice.size(); ++d) {
-                for (int s = 0; s < slotsChoice.size(); ++s) {
-                    if (lec.isCompatibleWith(r, daysChoice.get(d), slotsChoice.get(s))) {
-                        move(lec, r, daysChoice.get(d), slotsChoice.get(s));
-                        isSuccess = true;
-                        continue lecture_loop;
-                    }
-                }
-            }
-        }
-        return isSuccess;
-    }
-
-    private boolean move(Lecture lec, Room r, int day, int timeSlot) {
-        if (lec.isCompatibleWith(r, day, timeSlot)) {
-            undoManager.Move(lec, r, day, timeSlot);
-            return true;
-        }
-        return false;
-    }
-
-    private void minWorkingDaysMove() {
-        Collections.shuffle(lectureList, rand);
-        Collections.shuffle(daysChoice, rand);
-        for (int i = 0; i < lectureList.size(); ++i) {
-            Lecture lec = lectureList.get(i);
-            if (lec.getCourse().getMinWorkingDaysCost() > 0) {
-                if (lec.getCourse().getNumOfLecturesForDay(lec.getDay()) > 0) {
-                    if (moveLectureToAnotherDay(lec)) {
+            Collections.shuffle(IsolatedLectures, rand);
+            for (int k = 0; k < IsolatedLectures.size(); ++k) {
+                Lecture isolatedLec = IsolatedLectures.get(k);
+                Collections.shuffle(hasNeighborsLectures, rand);
+                for (int j = 0; j < hasNeighborsLectures.size(); ++j) {
+                    Lecture hasNeighborLec = hasNeighborsLectures.get(j);
+                    if (isolatedLec.canbePutAdjacentWithSameRoom(hasNeighborLec, slotsPerDay)) {
+                        undoManager.putAdjacent(isolatedLec, hasNeighborLec, slotsPerDay);
                         return;
+                    } else//if we can't put in the same room then try with new rooms
+                    {
+                        Collections.shuffle(roomList);
+                        for (int rIndex = 0; rIndex < roomList.size(); ++rIndex) {
+                            Room newRoom = roomList.get(rIndex);
+                            if (newRoom != isolatedLec.getRoom() && isolatedLec.canbePutAdjacentWithNewRoom(hasNeighborLec, newRoom, slotsPerDay)) {
+                                undoManager.putAdjacent(isolatedLec, hasNeighborLec, slotsPerDay, newRoom);
+                                return;
+                            }
+
+                        }
                     }
                 }
             }
+
+
+        }
+
+    }
+
+    private void takeSnapshot(int snapshotType) {
+        for (Course c : courseList) {
+            c.takeSnapshot(snapshotType);
+        }
+        for (Lecture l : lectureList) {
+            l.takeSnapshot(snapshotType);
+        }
+        for (Curriculum c : curriculumList) {
+            c.takeSnapshot(snapshotType);
+        }
+        for (Room r : roomList) {
+            r.takeSnapshot(snapshotType);
+        }
+        for (Teacher t : teacherList) {
+            t.takeSnapshot(snapshotType);
         }
     }
 
-    private boolean moveLectureToAnotherDay(Lecture lec) {
-        int curDay = lec.getDay();
-
-        Collections.shuffle(roomList, rand);
-        Collections.shuffle(daysChoice, rand);
-        Collections.shuffle(slotsChoice, rand);
-
-        for (int r = 0; r < numOfRooms; ++r) {
-            Room room = roomList.get(r);
-            for (int d = 0; d < days; ++d) {
-                if (daysChoice.get(d) == curDay) {
-                    continue;
-                }
-
-                for (int s = 0; s < slotsPerDay; ++s) {
-                    if (move(lec, room, daysChoice.get(d), slotsChoice.get(s))) {
-                        return true;
-                    }
-                }
-            }
+    private void restoreSnapshot(int snapshotType) {
+        for (Course c : courseList) {
+            c.restoreSnapshot(snapshotType);
         }
-
-        return false;
+        for (Lecture l : lectureList) {
+            l.restoreSnapshot(snapshotType);
+        }
+        for (Curriculum c : curriculumList) {
+            c.restoreSnapshot(snapshotType);
+        }
+        for (Room r : roomList) {
+            r.restoreSnapshot(snapshotType);
+        }
+        for (Teacher t : teacherList) {
+            t.restoreSnapshot(snapshotType);
+        }
     }
 
     private void printSolution() {

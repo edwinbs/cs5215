@@ -1,12 +1,25 @@
 package entity;
 
+import java.util.HashMap;
 import java.util.StringTokenizer;
 
-public class Room {
+class RoomSnapshot {
+    Lecture[][] user;
+    
+    public RoomSnapshot(Lecture[][] user) {
+        this.user = new Lecture[user.length][user[0].length];
+        for (int i=0; i<user.length; ++i) {
+            System.arraycopy(user[i], 0, this.user[i], 0, user[i].length);
+        }
+    }
+}
+
+public class Room implements Restorable {
 
     private String name;
     private int capacity;
-    private Lecture[][] user;
+    private Lecture[][] user; //TODO: Needs snapshot
+    private HashMap<Integer, RoomSnapshot> snapshots = new HashMap<Integer, RoomSnapshot>();
 
     public static Room create(String line, int days, int slotsPerDay) {
         StringTokenizer strTok = new StringTokenizer(line);
@@ -66,5 +79,21 @@ public class Room {
     @Override
     public int hashCode() {
         return this.name.hashCode();
+    }
+
+    @Override
+    public void takeSnapshot(int snapshotType) {
+        snapshots.put(snapshotType, new RoomSnapshot(this.user));
+    }
+
+    @Override
+    public void restoreSnapshot(int snapshotType) {
+        RoomSnapshot snapshot = snapshots.get(snapshotType);
+        if (snapshot != null) {
+            this.user = new Lecture[snapshot.user.length][snapshot.user[0].length];
+            for (int i=0; i<snapshot.user.length; ++i) {
+                System.arraycopy(snapshot.user[i], 0, this.user[i], 0, snapshot.user[i].length);
+            }
+        }
     }
 }
