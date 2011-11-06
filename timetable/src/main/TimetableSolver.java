@@ -99,11 +99,8 @@ public class TimetableSolver {
         int best = Integer.MAX_VALUE;
         int bestInitialConstruction = Integer.MAX_VALUE;
 
-        int hillClimbings = 0;
-
         preprocessRooms();
         takeSnapshot(Restorable.ST_BLANK);
-        int iters = 0;
         while (!stopFlag) {
             restoreSnapshot(Restorable.ST_BLANK);
             if (initialConstruction()) {
@@ -111,7 +108,6 @@ public class TimetableSolver {
                 if (initialConstructionCost < bestInitialConstruction * 1.1f) {
                     bestInitialConstruction = initialConstructionCost;
                     hillClimbing(50000);
-                    ++hillClimbings;
                     int cost = validator.calcCost();
                     if (cost < best) {
                         best = cost;
@@ -119,7 +115,6 @@ public class TimetableSolver {
                     }
                 }
             }
-            ++iters;
         }
         restoreSnapshot(Restorable.ST_MASTER);
         printSolution();
