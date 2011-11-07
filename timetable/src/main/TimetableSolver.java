@@ -174,26 +174,27 @@ public class TimetableSolver {
         int lowestCost = cost;
         takeSnapshot(Restorable.ST_CANDIDATE);
         while (maxIterations-- > 0 && !stopFlag) {
-            int rn = rand.nextInt(5);
-            switch (rn) {
-                case 0:
-                    randomLectureMove();
-                    break;
-                case 1:
-                    randomTimeMove();
-                    break;
-                case 2:
-                    randomRoomMove();
-                    break;
-                case 3:
-                    randomRoomStabilityMove();
-                    break;
-                case 4:
-                    minWorkingDaysMove();
-                    break;
-                case 5:
-                    curriculumCompactnessMove();
-                    break;
+            if (rand.nextInt(10) > 0) {
+                int rn = rand.nextInt(5);
+                switch (rn) {
+                    case 0:
+                        randomLectureMove();
+                        break;
+                    case 1:
+                        randomTimeMove();
+                        break;
+                    case 2:
+                        randomRoomMove();
+                        break;
+                    case 3:
+                        randomRoomStabilityMove();
+                        break;
+                    case 4:
+                        minWorkingDaysMove();
+                        break;
+                }
+            } else {
+                curriculumCompactnessMove();
             }
 
             int newCost = validator.calcCost();
